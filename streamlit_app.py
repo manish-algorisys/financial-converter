@@ -60,6 +60,10 @@ if 'output_files' not in st.session_state:
     st.session_state.output_files = {}
 if 'document_name' not in st.session_state:
     st.session_state.document_name = None
+if 'save_message' not in st.session_state:
+    st.session_state.save_message = None
+if 'save_message_type' not in st.session_state:
+    st.session_state.save_message_type = None
 
 
 def check_api_health():
@@ -207,79 +211,103 @@ def display_editable_financial_data(data, document_name):
         }
     )
     
+    # Display any saved messages from previous action
+    if st.session_state.save_message:
+        if st.session_state.save_message_type == 'success':
+            st.success(st.session_state.save_message)
+        elif st.session_state.save_message_type == 'error':
+            st.error(st.session_state.save_message)
+        # Clear the message after displaying
+        st.session_state.save_message = None
+        st.session_state.save_message_type = None
+    
     # Save buttons
     col1, col2, col3 = st.columns([1, 1, 3])
     
     with col1:
         if st.button("💾 Save Changes", type="primary", use_container_width=True):
-            # Convert edited DataFrame back to financial_data format
-            updated_financial_data = []
-            
-            for _, row in edited_df.iterrows():
-                # Extract key and particular
-                key = row.get('Key', '')
-                particular = row.get('Particular', '')
+            with st.spinner('Saving changes...'):
+                # Convert edited DataFrame back to financial_data format
+                updated_financial_data = []
                 
-                # Extract all value columns (everything except Key and Particular)
-                values = {}
-                for col in edited_df.columns:
-                    if col not in ['Key', 'Particular']:
-                        values[col] = row[col]
+                for _, row in edited_df.iterrows():
+                    # Extract key and particular
+                    key = row.get('Key', '')
+                    particular = row.get('Particular', '')
+                    
+                    # Extract all value columns (everything except Key and Particular)
+                    values = {}
+                    for col in edited_df.columns:
+                        if col not in ['Key', 'Particular']:
+                            values[col] = row[col]
+                    
+                    updated_financial_data.append({
+                        'key': key,
+                        'particular': particular,
+                        'values': values
+                    })
                 
-                updated_financial_data.append({
-                    'key': key,
-                    'particular': particular,
-                    'values': values
-                })
-            
-            # Update via API
-            result = update_financial_data(
-                company_name=data['company_name'],
-                document_name=document_name,
-                financial_data=updated_financial_data,
-                create_new=False
-            )
-            
-            if result.get('success'):
-                st.success("✅ Changes saved successfully!")
-                # Update session state
-                st.session_state.parsed_data['financial_data'] = updated_financial_data
-                st.rerun()
-            else:
-                st.error(f"❌ Error saving changes: {result.get('error')}")
+                # Update via API
+                result = update_financial_data(
+                    company_name=data['company_name'],
+                    document_name=document_name,
+                    financial_data=updated_financial_data,
+                    create_new=False
+                )
+                
+                if result.get('success'):
+                    # Store message in session state
+                    st.session_state.save_message = "✅ Changes saved successfully!"
+                    st.session_state.save_message_type = 'success'
+                    # Update session state
+                    st.session_state.parsed_data['financial_data'] = updated_financial_data
+                    st.rerun()
+                else:
+                    # Store error message in session state
+                    st.session_state.save_message = f"❌ Error saving changes: {result.get('error')}"
+                    st.session_state.save_message_type = 'error'
+                    st.rerun()
     
     with col2:
         if st.button("📄 Save as New", use_container_width=True):
-            # Convert edited DataFrame back to financial_data format
-            updated_financial_data = []
-            
-            for _, row in edited_df.iterrows():
-                key = row.get('Key', '')
-                particular = row.get('Particular', '')
+            with st.spinner('Saving new version...'):
+                # Convert edited DataFrame back to financial_data format
+                updated_financial_data = []
                 
-                values = {}
-                for col in edited_df.columns:
-                    if col not in ['Key', 'Particular']:
-                        values[col] = row[col]
+                for _, row in edited_df.iterrows():
+                    key = row.get('Key', '')
+                    particular = row.get('Particular', '')
+                    
+                    values = {}
+                    for col in edited_df.columns:
+                        if col not in ['Key', 'Particular']:
+                            values[col] = row[col]
+                    
+                    updated_financial_data.append({
+                        'key': key,
+                        'particular': particular,
+                        'values': values
+                    })
                 
-                updated_financial_data.append({
-                    'key': key,
-                    'particular': particular,
-                    'values': values
-                })
-            
-            # Update via API (create new file)
-            result = update_financial_data(
-                company_name=data['company_name'],
-                document_name=document_name,
-                financial_data=updated_financial_data,
-                create_new=True
-            )
-            
-            if result.get('success'):
-                st.success(f"✅ New version saved successfully! File: {Path(result.get('file_path', '')).name}")
-            else:
-                st.error(f"❌ Error saving new version: {result.get('error')}")
+                # Update via API (create new file)
+                result = update_financial_data(
+                    company_name=data['company_name'],
+                    document_name=document_name,
+                    financial_data=updated_financial_data,
+                    create_new=True
+                )
+                
+                if result.get('success'):
+                    # Store success message in session state
+                    file_name = Path(result.get('file_path', '')).name
+                    st.session_state.save_message = f"✅ New version saved successfully! File: {file_name}"
+                    st.session_state.save_message_type = 'success'
+                    st.rerun()
+                else:
+                    # Store error message in session state
+                    st.session_state.save_message = f"❌ Error saving new version: {result.get('error')}"
+                    st.session_state.save_message_type = 'error'
+                    st.rerun()
     
     # Show comparison if there are changes
     if not df.equals(edited_df):
@@ -382,6 +410,8 @@ def main():
                 if st.button("🗑️ Clear", use_container_width=True):
                     st.session_state.parsed_data = None
                     st.session_state.output_files = {}
+                    st.session_state.save_message = None
+                    st.session_state.save_message_type = None
                     st.rerun()
         
         # Display results if available
