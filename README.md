@@ -7,6 +7,8 @@ A comprehensive solution for extracting financial data from quarterly reports (P
 - 🔍 **Automatic Page Detection**: Identifies standalone financial results pages
 - 📊 **Table Extraction**: Uses Docling to extract tables from PDFs with OCR support
 - 🎯 **Smart Parsing**: Company-specific configurations for accurate data extraction
+- ✏️ **Interactive Editing**: Review and edit extracted data in a tabular format
+- 💾 **Version Control**: Save changes or create new edited versions
 - 🌐 **REST API**: Flask-based API for programmatic access
 - 💻 **Web UI**: Streamlit interface for easy document upload and visualization
 - 📥 **Multiple Export Formats**: JSON, CSV, HTML, and Markdown
@@ -96,10 +98,9 @@ This is the easiest way to use the service with a graphical interface.
    The UI will open automatically in your browser at `http://localhost:8501`
 
 3. **Use the interface**:
-   - Upload a PDF file
-   - Select the company name
-   - Click "Parse Document"
-   - View and download the results
+   - **Upload & Parse Tab**: Upload a PDF file, select the company name, and parse
+   - **Review & Edit Tab**: View extracted data in an editable table, make corrections, and save changes
+   - **View Results Tab**: See the final results and download in various formats
 
 ### Option 2: Using the REST API
 
@@ -232,6 +233,46 @@ Get list of supported companies.
   "companies": ["BRITANNIA", "COLGATE", "DABUR", "HUL", "ITC", "NESTLE", "P&G"]
 }
 ```
+
+### POST /api/update-financial-data
+
+Update or edit financial data after parsing.
+
+**Request Body** (JSON):
+
+```json
+{
+  "company_name": "BRITANNIA",
+  "document_name": "Britannia Unaudited Q2 June 2026",
+  "financial_data": [
+    {
+      "particular": "Sale of goods",
+      "key": "sale_of_goods",
+      "values": {
+        "30.06.2025": "1000.00",
+        "31.03.2025": "950.00",
+        "30.06.2024": "900.00",
+        "31.03.2025_Y": "3800.00"
+      }
+    }
+  ],
+  "create_new": false
+}
+```
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "message": "Financial data updated successfully",
+  "file_path": "output/BRITANNIA_document/document-financial-data.json"
+}
+```
+
+**Parameters**:
+
+- `create_new`: Set to `true` to create a new edited version (saves as `*-financial-data-edited.json`), or `false` to overwrite the existing file
 
 ### GET /health
 

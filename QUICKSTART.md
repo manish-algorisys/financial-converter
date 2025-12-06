@@ -54,20 +54,34 @@ streamlit run streamlit_app.py
 ### 3. Use the Application
 
 1. Open your browser to `http://localhost:8501` (Streamlit will open automatically)
-2. Upload a PDF file
-3. Select the company name from the dropdown
-4. Click "Parse Document"
-5. View and download results!
+2. **Upload & Parse**: Upload a PDF file, select the company, and click "Parse Document"
+3. **Review & Edit**: Switch to the "Review & Edit" tab to review and modify extracted data
+4. **Save Changes**: Make edits and click "Save Changes" or "Save as New" to preserve edits
+5. **Download**: Get the results in JSON, CSV, or Markdown formats
 
 ## 📋 Quick Examples
 
 ### Using the Web UI
 
-1. **Upload**: Click "Browse files" and select a PDF
-2. **Select Company**: Choose from the dropdown (e.g., "BRITANNIA")
-3. **Parse**: Click the "🚀 Parse Document" button
-4. **View**: See the extracted financial data in a table
-5. **Download**: Get JSON, CSV, or Markdown files
+**Tab 1: Upload & Parse**
+
+1. Click "Browse files" and select a PDF
+2. Choose company from dropdown (e.g., "BRITANNIA")
+3. Click "🚀 Parse Document" button
+4. View the extracted data preview
+
+**Tab 2: Review & Edit** ⭐ NEW!
+
+1. See all extracted data in an editable table
+2. Click any cell to edit values
+3. Add or remove rows as needed
+4. Click "💾 Save Changes" to update the file
+5. Or click "📄 Save as New" to create a separate edited version
+
+**Tab 3: View Results**
+
+1. See the final financial data
+2. Download in JSON, CSV, or Markdown formats
 
 ### Using the API (cURL)
 

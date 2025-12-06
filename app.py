@@ -236,6 +236,92 @@ def get_results(company_name, document_name):
         }), 500
 
 
+@app.route('/api/update-financial-data', methods=['POST'])
+def update_financial_data():
+    """
+    Update financial data JSON file after editing.
+    
+    Expected JSON body:
+    {
+        "company_name": "BRITANNIA",
+        "document_name": "Britannia Unaudited Q2 June 2026",
+        "financial_data": [...],  # Updated financial data array
+        "create_new": false  # Optional: if true, creates a new edited version
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        company_name = data.get('company_name', '').upper()
+        document_name = data.get('document_name', '')
+        financial_data = data.get('financial_data', [])
+        create_new = data.get('create_new', False)
+        
+        if not company_name or not document_name:
+            return jsonify({
+                'success': False,
+                'error': 'Company name and document name are required'
+            }), 400
+        
+        if not financial_data:
+            return jsonify({
+                'success': False,
+                'error': 'Financial data is required'
+            }), 400
+        
+        # Validate company name
+        if company_name not in get_supported_companies():
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported company: {company_name}'
+            }), 400
+        
+        # Prepare updated data
+        updated_data = {
+            "company_name": company_name,
+            "financial_data": financial_data
+        }
+        
+        # Determine output path
+        output_dir = OUTPUT_FOLDER / f"{company_name}_{document_name}"
+        
+        if not output_dir.exists():
+            output_dir.mkdir(parents=True, exist_ok=True)
+        
+        if create_new:
+            # Create a new edited version
+            json_file = output_dir / f"{document_name}-financial-data-edited.json"
+        else:
+            # Overwrite existing file
+            json_file = output_dir / f"{document_name}-financial-data.json"
+        
+        # Save updated JSON
+        import json
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(updated_data, f, indent=2, ensure_ascii=False)
+        
+        _log.info(f"Updated financial data saved to {json_file}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Financial data updated successfully',
+            'file_path': str(json_file)
+        }), 200
+        
+    except Exception as e:
+        _log.error(f"Error updating financial data: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
+
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     """Handle file too large error."""

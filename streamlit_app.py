@@ -58,6 +58,8 @@ if 'parsed_data' not in st.session_state:
     st.session_state.parsed_data = None
 if 'output_files' not in st.session_state:
     st.session_state.output_files = {}
+if 'document_name' not in st.session_state:
+    st.session_state.document_name = None
 
 
 def check_api_health():
@@ -115,6 +117,37 @@ def parse_document(file, company_name):
         }
 
 
+def update_financial_data(company_name, document_name, financial_data, create_new=False):
+    """Update financial data via API."""
+    try:
+        payload = {
+            'company_name': company_name,
+            'document_name': document_name,
+            'financial_data': financial_data,
+            'create_new': create_new
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/update-financial-data",
+            json=payload,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            error_data = response.json()
+            return {
+                'success': False,
+                'error': error_data.get('error', 'Unknown error occurred')
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error updating data: {str(e)}'
+        }
+
+
 def display_financial_data(data):
     """Display financial data in a formatted table."""
     if not data or 'financial_data' not in data:
@@ -132,6 +165,129 @@ def display_financial_data(data):
     
     # Display as table
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def display_editable_financial_data(data, document_name):
+    """Display financial data in an editable format."""
+    if not data or 'financial_data' not in data:
+        st.warning("No financial data available.")
+        return
+    
+    st.info("💡 Review and edit the extracted data below. Click 'Save Changes' when done.")
+    
+    # Create DataFrame from financial data with keys
+    rows = []
+    for item in data['financial_data']:
+        row = {
+            'Key': item['key'],
+            'Particular': item['particular']
+        }
+        row.update(item['values'])
+        rows.append(row)
+    
+    df = pd.DataFrame(rows)
+    
+    # Display editable data editor
+    edited_df = st.data_editor(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="dynamic",  # Allow adding/removing rows
+        column_config={
+            "Key": st.column_config.TextColumn(
+                "Key",
+                help="Unique identifier for this financial metric",
+                width="medium",
+            ),
+            "Particular": st.column_config.TextColumn(
+                "Particular",
+                help="Description of the financial metric",
+                width="large",
+            ),
+        }
+    )
+    
+    # Save buttons
+    col1, col2, col3 = st.columns([1, 1, 3])
+    
+    with col1:
+        if st.button("💾 Save Changes", type="primary", use_container_width=True):
+            # Convert edited DataFrame back to financial_data format
+            updated_financial_data = []
+            
+            for _, row in edited_df.iterrows():
+                # Extract key and particular
+                key = row.get('Key', '')
+                particular = row.get('Particular', '')
+                
+                # Extract all value columns (everything except Key and Particular)
+                values = {}
+                for col in edited_df.columns:
+                    if col not in ['Key', 'Particular']:
+                        values[col] = row[col]
+                
+                updated_financial_data.append({
+                    'key': key,
+                    'particular': particular,
+                    'values': values
+                })
+            
+            # Update via API
+            result = update_financial_data(
+                company_name=data['company_name'],
+                document_name=document_name,
+                financial_data=updated_financial_data,
+                create_new=False
+            )
+            
+            if result.get('success'):
+                st.success("✅ Changes saved successfully!")
+                # Update session state
+                st.session_state.parsed_data['financial_data'] = updated_financial_data
+                st.rerun()
+            else:
+                st.error(f"❌ Error saving changes: {result.get('error')}")
+    
+    with col2:
+        if st.button("📄 Save as New", use_container_width=True):
+            # Convert edited DataFrame back to financial_data format
+            updated_financial_data = []
+            
+            for _, row in edited_df.iterrows():
+                key = row.get('Key', '')
+                particular = row.get('Particular', '')
+                
+                values = {}
+                for col in edited_df.columns:
+                    if col not in ['Key', 'Particular']:
+                        values[col] = row[col]
+                
+                updated_financial_data.append({
+                    'key': key,
+                    'particular': particular,
+                    'values': values
+                })
+            
+            # Update via API (create new file)
+            result = update_financial_data(
+                company_name=data['company_name'],
+                document_name=document_name,
+                financial_data=updated_financial_data,
+                create_new=True
+            )
+            
+            if result.get('success'):
+                st.success(f"✅ New version saved successfully! File: {Path(result.get('file_path', '')).name}")
+            else:
+                st.error(f"❌ Error saving new version: {result.get('error')}")
+    
+    # Show comparison if there are changes
+    if not df.equals(edited_df):
+        with st.expander("🔍 View Changes"):
+            st.write("**Original Data:**")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.write("**Modified Data:**")
+            st.dataframe(edited_df, use_container_width=True, hide_index=True)
 
 
 def main():
@@ -174,7 +330,7 @@ def main():
         return
     
     # Create tabs
-    tab1, tab2 = st.tabs(["📤 Upload & Parse", "📊 View Results"])
+    tab1, tab2, tab3 = st.tabs(["📤 Upload & Parse", "✏️ Review & Edit", "📊 View Results"])
     
     with tab1:
         st.header("Upload Financial Document")
@@ -216,6 +372,8 @@ def main():
                         st.session_state.parsed_data = result.get('data')
                         st.session_state.output_files = result.get('output_files', {})
                         st.session_state.processing_time = result.get('processing_time')
+                        # Store document name (without extension)
+                        st.session_state.document_name = Path(uploaded_file.name).stem
                         st.rerun()
                     else:
                         st.error(f"❌ {result.get('error', 'Unknown error')}")
@@ -238,8 +396,10 @@ def main():
                 else:
                     st.info(f"⏱️ Processing time: {processing_time}")
             
-            st.subheader("Extracted Financial Data")
+            st.subheader("Extracted Financial Data (Preview)")
             display_financial_data(st.session_state.parsed_data)
+            
+            st.info("💡 Switch to the '✏️ Review & Edit' tab to review and modify the extracted data.")
             
             # Download options
             st.divider()
@@ -293,6 +453,35 @@ def main():
                         st.button("📝 Download Markdown", disabled=True, use_container_width=True)
     
     with tab2:
+        st.header("Review & Edit Financial Data")
+        
+        if st.session_state.parsed_data:
+            # Get document name from session state or output files
+            document_name = st.session_state.document_name
+            
+            if not document_name and st.session_state.output_files and 'json' in st.session_state.output_files:
+                json_path = Path(st.session_state.output_files['json'])
+                # Extract document name from path like: output/COMPANY_DocName/DocName-financial-data.json
+                document_name = json_path.parent.name.split('_', 1)[1] if '_' in json_path.parent.name else json_path.stem.replace('-financial-data', '')
+            
+            if not document_name:
+                # Fallback: try to infer from company name
+                document_name = st.session_state.parsed_data.get('company_name', 'document')
+            
+            # Company info
+            company_name = st.session_state.parsed_data.get('company_name', 'N/A')
+            st.subheader(f"Company: {company_name}")
+            st.caption(f"Document: {document_name}")
+            
+            st.divider()
+            
+            # Display editable financial data
+            display_editable_financial_data(st.session_state.parsed_data, document_name)
+            
+        else:
+            st.info("👈 No results yet. Upload and parse a document in the 'Upload & Parse' tab first.")
+    
+    with tab3:
         st.header("View Parsing Results")
         
         if st.session_state.parsed_data:
