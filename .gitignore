@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+
+# Output directories
+output/
+uploads/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Flask
+instance/
+.webassets-cache
+
+# Streamlit
+.streamlit/
+
+# PDF files (optional - uncomment if you don't want to track PDFs)
+# *.pdf
+
+# Model cache
+.cache/
+models/

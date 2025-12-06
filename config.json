@@ -1,0 +1,1071 @@
+{
+  "column_layouts": {
+    "standard": {
+      "label": 2,
+      "30.06.2025": 3,
+      "31.03.2025": 4,
+      "30.06.2024": 5,
+      "31.03.2025_Y": 6
+    },
+    "hul": {
+      "label": 3,
+      "30.06.2025": 1,
+      "31.03.2025": 4,
+      "30.06.2024": 2,
+      "31.03.2025_Y": 5
+    },
+    "itc": {
+      "label": 1,
+      "30.06.2025": 3,
+      "31.03.2025": 5,
+      "30.06.2024": 4,
+      "31.03.2025_Y": 6
+    },
+    "dabur": {
+      "label": 1,
+      "30.06.2025": 2,
+      "31.03.2025": 3,
+      "30.06.2024": 4,
+      "31.03.2025_Y": 5
+    }
+  },
+  "britannia": {
+    "column_layout": "standard",
+    "financial_data": [
+      { "key": "sale_of_goods", "labels": ["Sale of goods"], "tr_number": 5 },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["Other operating revenues"],
+        "tr_number": 6
+      },
+      {
+        "key": "revenue_from_operations",
+        "labels": ["Total revenue from operations"],
+        "tr_number": 7
+      },
+      {
+        "key": "other_income",
+        "labels": ["Other income (Refer note 6)", "Other Income"],
+        "tr_number": 8
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total income (I+II)", "Total Income"],
+        "tr_number": 9
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of materials consumed"],
+        "tr_number": 11
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": ["Purchases of stock-in-trade"],
+        "tr_number": 12
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods, work-in-progress and stock-in-trade",
+          "Changes in inventories"
+        ],
+        "tr_number": 13
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 14
+      },
+      { "key": "finance_costs", "labels": ["Finance costs"], "tr_number": 15 },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": ["Depreciation and amortisation expense"],
+        "tr_number": 16
+      },
+      { "key": "other_expense", "labels": ["Other expense"], "tr_number": 17 },
+      {
+        "key": "total_expenses",
+        "labels": ["Total expenses"],
+        "tr_number": 18
+      },
+      {
+        "key": "profit_before_exceptional_and_tax",
+        "labels": [
+          "Profit before exceptional items and tax (IlI-IV)",
+          "Profit before exceptional items and tax"
+        ],
+        "tr_number": 19
+      },
+      {
+        "key": "exceptional_item_expense",
+        "labels": [
+          "Exceptional item Expense (Refer note 7)",
+          "Exceptional item Expense"
+        ],
+        "tr_number": 20
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit before tax", ""],
+        "tr_number": 21
+      },
+      {
+        "key": "current_tax",
+        "labels": ["(i) Current tax", "Current tax"],
+        "tr_number": 23
+      },
+      {
+        "key": "deferred_tax",
+        "labels": ["(ii) Deferred tax charge", "Deferred tax"],
+        "tr_number": 24
+      },
+      {
+        "key": "total_tax_expense",
+        "labels": ["Total tax expense"],
+        "tr_number": 25
+      },
+      {
+        "key": "net_profit",
+        "labels": [
+          "Net profit for the period year (VII-VIII)",
+          "Net profit for the period year"
+        ],
+        "tr_number": 26
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": [
+          "Items that will not be reclassified subsequently to profit or loss"
+        ],
+        "tr_number": 28
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": [
+          "Income tax relating to items that will not be reclassified"
+        ],
+        "tr_number": 29
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": ["Other comprehensive loss (net of tax)"],
+        "tr_number": 30
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["Iotal comprehensive income for the period year (IX+X)"],
+        "tr_number": 31
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": [
+          "XII | Paid-up equity share capital (face value of = 1 each)"
+        ],
+        "tr_number": 32
+      },
+      { "key": "other_equity", "labels": ["Other equity"], "tr_number": 33 },
+      {
+        "key": "eps_basic",
+        "labels": [
+          "Earnings per share (face value of ? 1 each) (not annualised): (a) Basic"
+        ],
+        "tr_number": 34
+      },
+      { "key": "eps_diluted", "labels": ["(b) Diluted"], "tr_number": 35 }
+    ]
+  },
+  "colgate": {
+    "column_layout": "standard",
+    "financial_data": [
+      {
+        "key": "sale_of_goods",
+        "labels": ["(i) Sales (Refer Note 1)", "Sale of goods"],
+        "tr_number": 4
+      },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["(ii) Other Operating Income", "Other operating revenues"],
+        "tr_number": 5
+      },
+      {
+        "key": "other_income",
+        "labels": ["(b) Other Income (Refer Note 2)", "Other Income"],
+        "tr_number": 6
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total income (I+II)", "Total Income"],
+        "tr_number": 7
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": [
+          "(a) Cost of materials consumed",
+          "Cost of materials consumed"
+        ],
+        "tr_number": 9
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": [
+          "(b) Purchases of stock-in-trade",
+          "Purchases of stock-in-trade"
+        ],
+        "tr_number": 10
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "(c) Changes in inventories of finished goods, work-in-progress and stock-in-trade",
+          "Changes in inventories"
+        ],
+        "tr_number": 11
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": [
+          "(d) Employee benefits expense",
+          "Employee benefits expense"
+        ],
+        "tr_number": 12
+      },
+      {
+        "key": "finance_costs",
+        "labels": ["(e) Finance Cost", "Finance costs"],
+        "tr_number": 13
+      },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": [
+          "(f) Depreciation and Amortisation expense",
+          "Depreciation and amortisation expense"
+        ],
+        "tr_number": 14
+      },
+      {
+        "key": "advertising_expense",
+        "labels": ["(i) Advertising", "Advertising Expense", "Advertising"],
+        "tr_number": 16
+      },
+      {
+        "key": "other_expense",
+        "labels": ["(ii) Others", "Other Expenses"],
+        "tr_number": 17
+      },
+      {
+        "key": "total_expenses",
+        "labels": ["Total Expenses"],
+        "tr_number": 18
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit Before Tax (1-2)", "Profit Before Tax"],
+        "tr_number": 19
+      },
+      { "key": "current_tax", "labels": ["Current Tax"], "tr_number": 21 },
+      {
+        "key": "prior_year_tax_adjustment",
+        "labels": ["Adjustment of tax relating to earlier years"],
+        "tr_number": 22
+      },
+      { "key": "deferred_tax", "labels": ["Deferred Tax"], "tr_number": 23 },
+      {
+        "key": "net_profit",
+        "labels": ["Net Profit for the period"],
+        "tr_number": 24
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Re-measurement of loss on defined benefit plans"],
+        "tr_number": 27
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": ["Tax adjustment on above"],
+        "tr_number": 28
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["Total comprehensive income for the period"],
+        "tr_number": 29
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": [
+          "Paid-up Equity Share Capital (Face value: Re 1/- per share)"
+        ],
+        "tr_number": 30
+      },
+      {
+        "key": "other_equity",
+        "labels": ["Reserve excluding Revaluation Reserve"],
+        "tr_number": 31
+      },
+      {
+        "key": "eps_basic_diluted",
+        "labels": ["Basic and Diluted Earnings per share (of Re 1/- each)"],
+        "tr_number": 32
+      }
+    ]
+  },
+  "dabur": {
+    "column_layout": "standard",
+    "financial_data": [
+      {
+        "key": "revenue_from_operations",
+        "labels": ["Revenue from operations"],
+        "tr_number": 4
+      },
+      {
+        "key": "other_income",
+        "labels": ["Other income (Refer note 6)", "Other Income"],
+        "tr_number": 5
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total income (I+II)", "Total Income"],
+        "tr_number": 6
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of materials consumed"],
+        "tr_number": 8,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": ["Purchases of stock-in-trade"],
+        "tr_number": 9,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods, work-in-progress and stock-in-trade",
+          "Changes in inventories"
+        ],
+        "tr_number": 10,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 11,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "finance_costs",
+        "labels": ["Finance costs"],
+        "tr_number": 12,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": ["Depreciation and amortisation expense"],
+        "tr_number": 13,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "advertising_expense",
+        "labels": ["Advertisement and publicity"],
+        "tr_number": 15,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "other_expense",
+        "labels": ["Others"],
+        "tr_number": 16,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "total_expenses",
+        "labels": ["Total expenses"],
+        "tr_number": 17,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "profit_before_exceptional_and_tax",
+        "labels": ["Profit before exceptional items and tax"],
+        "tr_number": 18
+      },
+      {
+        "key": "exceptional_item_expense",
+        "labels": ["Exceptional items"],
+        "tr_number": 19
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit before tax"],
+        "tr_number": 20
+      },
+      { "key": "current_tax", "labels": ["Current tax"], "tr_number": 22 },
+      { "key": "deferred_tax", "labels": ["Deferred tax"], "tr_number": 23 },
+      {
+        "key": "net_profit",
+        "labels": ["Net profit for the period /year (A)"],
+        "tr_number": 24
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Items that will not be reclassified to profit or loss"],
+        "tr_number": 26
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": [
+          "Income relating to items that will not be reclassified to profit or loss tax"
+        ],
+        "tr_number": 27,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "oci_reclass_items",
+        "labels": ["Items that will be reclassified to profit or loss"],
+        "tr_number": 28
+      },
+      {
+        "key": "tax_on_reclass_items",
+        "labels": [
+          "Income tax relating to items that will be reclassified to profit or loss"
+        ],
+        "tr_number": 29,
+        "column_layout": "dabur"
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": [
+          "Total other comprehensive income/lloss) for the period /year (B)"
+        ],
+        "tr_number": 30
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["Total comprehensive income for the period/year (A+B)"],
+        "tr_number": 31
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": ["Paid-up equity share capital (Face value of ? 1 each)"],
+        "tr_number": 32
+      },
+      { "key": "other_equity", "labels": ["Other equity"], "tr_number": 33 },
+      {
+        "key": "eps_basic",
+        "labels": ["Basic (R)"],
+        "tr_number": 35,
+        "column_layout": "dabur"
+      },
+      { "key": "eps_diluted", "labels": ["Diluted"], "tr_number": 36 }
+    ]
+  },
+  "hul": {
+    "column_layout": "hul",
+    "financial_data": [
+      {
+        "key": "sale_of_products",
+        "labels": ["Sale of products"],
+        "tr_number": 5
+      },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["Other operating revenue"],
+        "tr_number": 6
+      },
+      { "key": "other_income", "labels": ["Other income"], "tr_number": 7 },
+      { "key": "total_income", "labels": ["TOTAL INCOME"], "tr_number": 8 },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of materials consumed"],
+        "tr_number": 10
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": ["Purchases of stock-in-trade"],
+        "tr_number": 11
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods, work-in-progress and"
+        ],
+        "tr_number": 12
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 13
+      },
+      { "key": "finance_costs", "labels": ["Finance costs"], "tr_number": 14 },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": ["Depreciation and amortisation expense"],
+        "tr_number": 15
+      },
+      {
+        "key": "advertising_expense",
+        "labels": ["Advertising and promotion"],
+        "tr_number": 17
+      },
+      { "key": "other_expense", "labels": ["Others"], "tr_number": 18 },
+      {
+        "key": "total_expenses",
+        "labels": ["TOTAL EXPENSES"],
+        "tr_number": 19
+      },
+      {
+        "key": "profit_before_exceptional_and_tax",
+        "labels": ["Profit before exceptional items and tax"],
+        "tr_number": 20
+      },
+      {
+        "key": "exceptional_item_expense",
+        "labels": ["Exceptional items [net (charge) credit"],
+        "tr_number": 21
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit before tax"],
+        "tr_number": 22
+      },
+      { "key": "current_tax", "labels": ["Current tax"], "tr_number": 24 },
+      { "key": "deferred_tax", "labels": ["Deferred tax"], "tr_number": 25 },
+      {
+        "key": "net_profit",
+        "labels": ["PROFIT FOR THE PERIOD YEAR"],
+        "tr_number": 26
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Remeasurements of the net defined benefit plans"],
+        "tr_number": 29
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": ["Tax on above"],
+        "tr_number": 30
+      },
+      {
+        "key": "fv_debt_oci",
+        "labels": [
+          "Fair value of debt instruments through other comprehensive income"
+        ],
+        "tr_number": 32
+      },
+      { "key": "tax_fv_debt_oci", "labels": ["Tax on above"], "tr_number": 33 },
+      {
+        "key": "fv_cashflow_hedges_oci",
+        "labels": [
+          "Fair value of cash flow hedges through other comprehensive income"
+        ],
+        "tr_number": 34
+      },
+      {
+        "key": "tax_fv_cashflow_hedges_oci",
+        "labels": ["Tax on above"],
+        "tr_number": 35
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": ["OTHER COMPREHENSIVE INCOME FOR THE PERIOD YEAR"],
+        "tr_number": 36
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["TOTAL COMPREHENSIVE INCOME FOR THE PERIOD YEAR"],
+        "tr_number": 37
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": [
+          "Paid up Equity Share Capital (Face value of Re. per share)"
+        ],
+        "tr_number": 38
+      },
+      { "key": "other_equity", "labels": ["Other Equity"], "tr_number": 39 },
+      { "key": "eps_basic", "labels": ["Basic (in Rs"], "tr_number": 41 },
+      { "key": "eps_diluted", "labels": ["Diluted (in Rs )"], "tr_number": 42 }
+    ]
+  },
+  "itc": {
+    "column_layout": "itc",
+    "financial_data": [
+      {
+        "key": "sale_of_goods",
+        "labels": ["Gross Revenue from sale of products and services"],
+        "tr_number": 3
+      },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["Other operating revenue"],
+        "tr_number": 4
+      },
+      {
+        "key": "revenue_from_operations",
+        "labels": ["REVENUE FROM OPERATIONS"],
+        "tr_number": 5
+      },
+      {
+        "key": "other_income",
+        "labels": [
+          "Other income (Refer note 6)",
+          "Other Income",
+          "OTHER INCOME"
+        ],
+        "tr_number": 6
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total income (I+II)", "Total Income", "TOTAL INCOME"],
+        "tr_number": 7
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of materials consumed"],
+        "tr_number": 9
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": [
+          "Purchases of stock-in-trade",
+          "Purchases of Stock-in-Trade"
+        ],
+        "tr_number": 10
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods, work-in-progress and stock-in-trade",
+          "Changes in inventories",
+          "Changes in inventories of finished goods; Stock-in-Trade"
+        ],
+        "tr_number": 11
+      },
+      {
+        "key": "excise_duty",
+        "labels": ["Excise duty"],
+        "tr_number": 12
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 13
+      },
+      { "key": "finance_costs", "labels": ["Finance costs"], "tr_number": 14 },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": [" Depreciation and amortization expense"],
+        "tr_number": 15
+      },
+      { "key": "other_expense", "labels": ["Other expenses"], "tr_number": 16 },
+      {
+        "key": "total_expenses",
+        "labels": ["Total expenses", "TOTAL EXPENSES"],
+        "tr_number": 17
+      },
+      {
+        "key": "profit_before_exceptional_and_tax",
+        "labels": ["TPROFIT BEFORE EXCEPTIONAL ITEMS AND TAX"],
+        "tr_number": 18
+      },
+      {
+        "key": "exceptional_item_expense",
+        "labels": ["EXCEPTIONAL ITEMS"],
+        "tr_number": 19
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["PROFIT BEFORE TAX"],
+        "tr_number": 20
+      },
+      { "key": "tax_expense", "labels": ["TAX EXPENSE"], "tr_number": 21 },
+      { "key": "current_tax", "labels": ["Current Tax"], "tr_number": 22 },
+      { "key": "deferred_tax", "labels": ["Deferred Tax"], "tr_number": 23 },
+      {
+        "key": "net_profit_continued",
+        "labels": ["PROFIT FOR THE PERIOD FROM CONTINUING OPERATIONS"],
+        "tr_number": 24
+      },
+      {
+        "key": "profit_before_exc_tax_discontinued",
+        "labels": [
+          "PROFIT BEFORE EXCEPTIONAL ITEMS AND TAX FROM DISCONTINUED OPERATIONS"
+        ],
+        "tr_number": 25
+      },
+      {
+        "key": "exceptional_item_discontinued",
+        "labels": ["EXCEPTIONAL ITEMS OF DISCONTINUED OPERATIONS"],
+        "tr_number": 26
+      },
+      {
+        "key": "tax_expense_discontinued",
+        "labels": ["TAX EXPENSE OF DISCONTINUED OPERATIONS"],
+        "tr_number": 27
+      },
+      {
+        "key": "net_profit_discontinued",
+        "labels": ["PROFIT FOR THE PERIOD FROM DISCONTINUED OPERATIONS"],
+        "tr_number": 28
+      },
+      {
+        "key": "net_profit",
+        "labels": ["PROFIT FOR THE PERIOD"],
+        "tr_number": 29
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": ["OTHER COMPREHENSIVE INCOME"],
+        "tr_number": 30
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Items that will not be reclassified to profit or loss"],
+        "tr_number": 31
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": [
+          "Income tax relating to items that will not be reclassified to"
+        ],
+        "tr_number": 32
+      },
+      {
+        "key": "oci_reclass_items",
+        "labels": ["Items that will be reclassified to profit or loss"],
+        "tr_number": 33
+      },
+      {
+        "key": "tax_on_reclass_items",
+        "labels": [
+          "Income tax relating to items that will be reclassified to profit or"
+        ],
+        "tr_number": 34
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["TOTAL COMPREHENSIVE INCOME"],
+        "tr_number": 35
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": [
+          "PAID UP EQUITY SHARE CAPITAL (Ordinary Shares of ? 1/- each) RESERVES"
+        ],
+        "tr_number": 36
+      },
+      {
+        "key": "other_equity",
+        "labels": ["EARNINGS PER SHARE (of ? 1/- each) (not annualised)"],
+        "tr_number": 37
+      },
+      {
+        "key": "eps_basic_continuing",
+        "labels": ["For Continuing Operations (a) Basic"],
+        "tr_number": 38
+      },
+      {
+        "key": "eps_diluted_continuing",
+        "labels": ["(b) Diluted"],
+        "tr_number": 39
+      },
+      {
+        "key": "eps_basic_discontinued",
+        "labels": ["(a) Basic"],
+        "tr_number": 41
+      },
+      {
+        "key": "eps_diluted_discontinued",
+        "labels": ["Diluted"],
+        "tr_number": 42
+      },
+      { "key": "eps_basic", "labels": ["Basic"], "tr_number": 44 },
+      { "key": "eps_diluted", "labels": ["Diluted"], "tr_number": 45 }
+    ]
+  },
+  "nestle": {
+    "column_layout": "standard",
+    "financial_data": [
+      { "key": "domestic_sales", "labels": ["Domestic sales"], "tr_number": 5 },
+      {
+        "key": "export_sales",
+        "labels": ["Export sales"],
+        "tr_number": 6
+      },
+      {
+        "key": "sale_of_products",
+        "labels": ["Sale of Products"],
+        "tr_number": 7
+      },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["Other operating revenue"],
+        "tr_number": 8
+      },
+      {
+        "key": "revenue_from_operations",
+        "labels": ["Revenue from Operations"],
+        "tr_number": 9
+      },
+      {
+        "key": "other_income",
+        "labels": ["Other income"],
+        "tr_number": 10
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total Income"],
+        "tr_number": 11
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of materials consumed"],
+        "tr_number": 13
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": ["Purchases of stock-in-trade"],
+        "tr_number": 14
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods; work in progress and"
+        ],
+        "tr_number": 15
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 16
+      },
+      {
+        "key": "finance_costs",
+        "labels": [
+          "Finance costs (including interest cost on employee benefits plans)"
+        ],
+        "tr_number": 17
+      },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": ["Depreciation and amortisation"],
+        "tr_number": 18
+      },
+      {
+        "key": "csr_expense",
+        "labels": ["Corporate social responsibility expense"],
+        "tr_number": 19
+      },
+      { "key": "other_expense", "labels": ["Other expenses"], "tr_number": 20 },
+      {
+        "key": "total_expenses",
+        "labels": ["Total expenses", "Total Expenses"],
+        "tr_number": 21
+      },
+      {
+        "key": "profit_before_exceptional_and_tax",
+        "labels": ["Profit before Exceptional Items and Tax"],
+        "tr_number": 22
+      },
+      {
+        "key": "exceptional_item_expense",
+        "labels": ["Exceptional items"],
+        "tr_number": 23
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit before Tax"],
+        "tr_number": 24
+      },
+      { "key": "current_tax", "labels": ["Current tax"], "tr_number": 26 },
+      { "key": "deferred_tax", "labels": ["Deferred tax"], "tr_number": 27 },
+      {
+        "key": "net_profit",
+        "labels": ["Profit for the Period"],
+        "tr_number": 28
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Re-measurement of retiral defined benefits plans"],
+        "tr_number": 31
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": [
+          "Income taxes relating to items that will not be reclassified to"
+        ],
+        "tr_number": 32
+      },
+      {
+        "key": "oci_reclass_items",
+        "labels": ["Changes in fair value of cash flow hedges"],
+        "tr_number": 34
+      },
+      {
+        "key": "tax_on_reclass_items",
+        "labels": [
+          "Income taxes relating to items that will be reclassified to profit or"
+        ],
+        "tr_number": 35
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": ["Total Other Comprehensive Income"],
+        "tr_number": 36
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["Total Comprehensive Income"],
+        "tr_number": 37
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": ["Paid-up equity share capital (Face value {1 Per share)"],
+        "tr_number": 38
+      },
+      { "key": "other_equity", "labels": ["Other equity"], "tr_number": 39 },
+      {
+        "key": "eps_basic_diluted",
+        "labels": [
+          "Earnings Per Share (EPS) (not annualised for the quarters) Basic Diluted"
+        ],
+        "tr_number": 40
+      },
+      {
+        "key": "ebitda",
+        "labels": [
+          "Additional Information: Earnings before interest, tax; depreciation and amortization"
+        ],
+        "tr_number": 41
+      }
+    ]
+  },
+  "pg": {
+    "column_layout": "standard",
+    "financial_data": [
+      {
+        "key": "sale_of_products",
+        "labels": ["Sale of products"],
+        "tr_number": 3
+      },
+      {
+        "key": "other_operating_revenues",
+        "labels": ["Other operating revenues"],
+        "tr_number": 4
+      },
+      {
+        "key": "revenue_from_operations",
+        "labels": ["Revenue from operations"],
+        "tr_number": 5
+      },
+      {
+        "key": "other_income",
+        "labels": ["Other income (Refer note 6)", "Other Income"],
+        "tr_number": 6
+      },
+      {
+        "key": "total_income",
+        "labels": ["Total income (I+II)", "Total Income"],
+        "tr_number": 7
+      },
+      {
+        "key": "cost_of_materials_consumed",
+        "labels": ["Cost of raw and packing materials consumed"],
+        "tr_number": 9
+      },
+      {
+        "key": "purchases_stock_in_trade",
+        "labels": ["Purchases of stock-in-trade"],
+        "tr_number": 10
+      },
+      {
+        "key": "changes_in_inventories",
+        "labels": [
+          "Changes in inventories of finished goods, work-in-progress and stock-in-trade",
+          "Changes in inventories"
+        ],
+        "tr_number": 11
+      },
+      {
+        "key": "employee_benefits_expense",
+        "labels": ["Employee benefits expense"],
+        "tr_number": 12
+      },
+      { "key": "finance_costs", "labels": ["Finance costs"], "tr_number": 13 },
+      {
+        "key": "depreciation_amortisation_expense",
+        "labels": ["Depreciation and amortisation expense"],
+        "tr_number": 14
+      },
+      {
+        "key": "impairment_losses",
+        "labels": ["Impairment losses (Refer Note 4)"],
+        "tr_number": 15
+      },
+      {
+        "key": "advertising_expense",
+        "labels": ["Advertising"],
+        "tr_number": 16
+      },
+      { "key": "other_expense", "labels": ["Other expense"], "tr_number": 17 },
+      {
+        "key": "total_expenses",
+        "labels": ["Total expenses"],
+        "tr_number": 18
+      },
+      {
+        "key": "profit_before_tax",
+        "labels": ["Profit before tax"],
+        "tr_number": 19
+      },
+      {
+        "key": "current_tax",
+        "labels": ["Income tax expense Current tax"],
+        "tr_number": 20
+      },
+      { "key": "deferred_tax", "labels": ["Deferred tax"], "tr_number": 21 },
+      {
+        "key": "prior_year_tax_adjustment",
+        "labels": ["Prior year tax adjustments"],
+        "tr_number": 22
+      },
+      {
+        "key": "net_profit",
+        "labels": ["Profit for the period year", ""],
+        "tr_number": 23
+      },
+      {
+        "key": "other_comprehensive_income",
+        "labels": ["Other comprehensive income"],
+        "tr_number": 24
+      },
+      {
+        "key": "oci_non_reclass_items",
+        "labels": ["Items that will not be reclassified to profit or loss"],
+        "tr_number": 26
+      },
+      {
+        "key": "tax_on_non_reclass_items",
+        "labels": ["Income tax effect on above"],
+        "tr_number": 27
+      },
+      {
+        "key": "total_other_comprehensive_income",
+        "labels": ["Total other comprehensive income"],
+        "tr_number": 28
+      },
+      {
+        "key": "total_comprehensive_income",
+        "labels": ["Total comprehensive income for the period year"],
+        "tr_number": 29
+      },
+      {
+        "key": "paid_up_equity_share_capital",
+        "labels": ["Paid-up equity share capital"],
+        "tr_number": 30
+      },
+      { "key": "other_equity", "labels": ["Other Equity"], "tr_number": 31 },
+      { "key": "eps_basic", "labels": ["Basic"], "tr_number": 32 },
+      { "key": "eps_diluted", "labels": ["Diluted"], "tr_number": 33 }
+    ]
+  }
+}

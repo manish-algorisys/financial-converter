@@ -1,0 +1,164 @@
+# Quick Start Guide
+
+## 🚀 Getting Started in 5 Minutes
+
+### 1. Install Dependencies
+
+```bash
+# Create and activate virtual environment
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux/Mac
+source venv/bin/activate
+
+# Install packages
+pip install -r requirements.txt
+```
+
+### 2. Start the Services
+
+#### Option A: Using the Launcher Script (Easiest)
+
+**Windows:**
+
+```bash
+start.bat
+```
+
+**Linux/Mac:**
+
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+Then select option 3 to run both services.
+
+#### Option B: Manual Start
+
+**Terminal 1 - Flask API:**
+
+```bash
+python app.py
+```
+
+**Terminal 2 - Streamlit UI:**
+
+```bash
+streamlit run streamlit_app.py
+```
+
+### 3. Use the Application
+
+1. Open your browser to `http://localhost:8501` (Streamlit will open automatically)
+2. Upload a PDF file
+3. Select the company name from the dropdown
+4. Click "Parse Document"
+5. View and download results!
+
+## 📋 Quick Examples
+
+### Using the Web UI
+
+1. **Upload**: Click "Browse files" and select a PDF
+2. **Select Company**: Choose from the dropdown (e.g., "BRITANNIA")
+3. **Parse**: Click the "🚀 Parse Document" button
+4. **View**: See the extracted financial data in a table
+5. **Download**: Get JSON, CSV, or Markdown files
+
+### Using the API (cURL)
+
+```bash
+# Parse a document
+curl -X POST http://localhost:5000/api/parse \
+  -F "file=@sample-data/Britannia Unaudited Q2 June 2026.pdf" \
+  -F "company_name=BRITANNIA"
+
+# Get supported companies
+curl http://localhost:5000/api/companies
+
+# Check health
+curl http://localhost:5000/health
+```
+
+### Using Python Requests
+
+```python
+import requests
+
+# Parse document
+with open('sample-data/Britannia Unaudited Q2 June 2026.pdf', 'rb') as f:
+    files = {'file': f}
+    data = {'company_name': 'BRITANNIA'}
+    response = requests.post('http://localhost:5000/api/parse',
+                           files=files, data=data)
+    result = response.json()
+    print(result)
+```
+
+## 🎯 Supported Companies
+
+- BRITANNIA
+- COLGATE
+- DABUR
+- HUL
+- ITC
+- NESTLE
+- P&G
+
+## 📁 Where Are My Files?
+
+All output files are saved in the `output/` directory:
+
+```
+output/
+├── BRITANNIA_DocumentName/
+│   ├── DocumentName-financial-data.json
+│   ├── DocumentName-table-1.csv
+│   ├── DocumentName-table-1.html
+│   └── DocumentName-table-1.md
+```
+
+## ⚡ Tips
+
+- **Processing Time**: Typically 30-60 seconds per document
+- **File Size**: PDFs up to 50MB are supported
+- **Quality**: Better PDF quality = better extraction results
+- **Parallel Processing**: Process one document at a time for best results
+
+## 🔧 Troubleshooting
+
+### "API is not running"
+
+- Make sure Flask API is started first: `python app.py`
+- Check if port 5000 is available
+
+### "Module not found"
+
+- Activate virtual environment: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Linux/Mac)
+- Reinstall: `pip install -r requirements.txt`
+
+### Slow Processing
+
+- Normal for first run (model loading)
+- Subsequent runs are faster
+- Use CPU mode if GPU causes issues
+
+## 📚 Next Steps
+
+- Read the full [README.md](README.md) for detailed documentation
+- Check `config.json` to add new companies
+- Explore the API endpoints for integration
+
+## 💡 Need Help?
+
+1. Check the logs in the terminal
+2. Review the [README.md](README.md) troubleshooting section
+3. Ensure all dependencies are installed correctly
+
+---
+
+**Happy Parsing! 📊**
