@@ -1,17 +1,55 @@
 # Financial Document Parser - API & UI
 
-A comprehensive solution for extracting financial data from quarterly reports (PDF format) and converting them into structured JSON format. This project includes a Flask REST API and a user-friendly Streamlit web interface.
+A comprehensive solution for extracting financial data from quarterly reports (PDF format) and converting them into structured JSON format with professional Excel/CSV export capabilities. This project includes a Flask REST API and a user-friendly Streamlit web interface.
+
+## 🚀 Latest Updates
+
+### v2.1 - Excel/CSV Generation ✨ NEW!
+
+- 📊 **Professional Excel Export**: Generate styled 47-row financial statements with borders, colors, and formatting
+- 📄 **CSV Export**: Create matching CSV files for compatibility
+- 🔢 **Indian Number Formatting**: Lakhs/crores style with comma separators and bracket negatives
+- 💾 **File Management**: UUID-based storage with metadata tracking and download counts
+- 🎨 **Professional Styling**: Bold headers, gray backgrounds, double underlines for totals
+- 📁 **Multiple Formats**: Support for 11 financial periods across columns
+
+See [EXCEL_QUICKSTART.md](EXCEL_QUICKSTART.md) for quick start guide.
+
+### v2.0 - Multi-Format PDF Support
+
+- ✨ **Flexible Date Patterns**: Automatically detects various date formats and quarters
+- 🎯 **Smart Page Detection**: Multi-priority page identification with fallback strategies
+- 🔍 **Fuzzy Label Matching**: Robust extraction even when table structure varies
+- 🏆 **Intelligent Table Selection**: Automatically selects the best table from multiple candidates
+- 🛡️ **Enhanced Error Handling**: Retry logic and graceful degradation
+- 📊 **Detailed Metadata**: Track extraction methods and processing details
+
+See [PDF_OPTIMIZATION.md](PDF_OPTIMIZATION.md) for detailed documentation.
 
 ## Features
 
-- 🔍 **Automatic Page Detection**: Identifies standalone financial results pages
+### PDF Parsing
+
+- 🔍 **Automatic Page Detection**: Identifies standalone financial results pages with flexible patterns
 - 📊 **Table Extraction**: Uses Docling to extract tables from PDFs with OCR support
-- 🎯 **Smart Parsing**: Company-specific configurations for accurate data extraction
+- 🎯 **Smart Parsing**: Company-specific configurations with fuzzy matching fallback
+- 🔄 **Multi-Format Support**: Handles various PDF layouts and date formats
+
+### Excel/CSV Export
+
+- 📊 **Professional Excel Files**: 47-row financial statement format with full styling
+- 📄 **CSV Export**: Plain text format for easy data import
+- 🔢 **Indian Formatting**: Comma separators (12,34,567) and bracket negatives (123)
+- 💾 **File Storage**: Save files with metadata for later download
+- 📁 **File Management**: List, filter, download, and delete generated files
+
+### User Interface
+
 - ✏️ **Interactive Editing**: Review and edit extracted data in a tabular format
 - 💾 **Version Control**: Save changes or create new edited versions
 - 🌐 **REST API**: Flask-based API for programmatic access
 - 💻 **Web UI**: Streamlit interface for easy document upload and visualization
-- 📥 **Multiple Export Formats**: JSON, CSV, HTML, and Markdown
+- 📥 **Multiple Export Formats**: JSON, CSV, HTML, Markdown, and Excel
 
 ## Supported Companies
 
@@ -126,7 +164,7 @@ For programmatic access or integration with other systems.
      curl http://localhost:5000/api/companies
      ```
 
-   - **Parse Document**:
+   - **Parse Document (Basic)**:
 
      ```bash
      curl -X POST http://localhost:5000/api/parse \
@@ -134,10 +172,68 @@ For programmatic access or integration with other systems.
        -F "company_name=BRITANNIA"
      ```
 
+   - **Parse Document (With Optimization Options)**:
+
+     ```bash
+     curl -X POST http://localhost:5000/api/parse \
+       -F "file=@statement.pdf" \
+       -F "company_name=HUL" \
+       -F "prefer_standalone=true" \
+       -F "use_fuzzy_matching=true"
+     ```
+
    - **Download File**:
      ```bash
      curl http://localhost:5000/api/download/BRITANNIA_filename/filename.json -o output.json
      ```
+
+## 🎯 Optimization Features
+
+### Flexible Date Patterns
+
+The parser now automatically detects various date formats:
+
+- `30 June 2025`, `30.06.2025`, `30/06/2025`
+- `June 30, 2025`, `Q2 2025`, `Q2 FY 2025`
+- Works with any month, year, and quarter
+
+No need to update code for different reporting periods!
+
+### Smart Page Detection
+
+Multi-priority page identification:
+
+1. **Priority 1**: Explicit standalone statements (highest confidence)
+2. **Priority 2**: Generic patterns without "consolidated" keyword
+3. **Priority 3**: Generic patterns as fallback
+
+### Fuzzy Label Matching
+
+When exact row numbers don't match (PDF format changed):
+
+- Automatically searches for labels in table text
+- Uses fuzzy matching to handle OCR variations
+- Tracks which method was used (see `extraction_method` in response)
+
+### Intelligent Table Selection
+
+When multiple tables are found:
+
+- Scores tables based on content (financial keywords, row count, numeric data)
+- Automatically selects the most likely financial statement
+- Provides table selection details in response
+
+### Test the Optimizations
+
+```bash
+# Test all sample PDFs with default optimization
+python test_optimization.py
+
+# Test different configurations on same PDF
+python test_optimization.py --config-test
+```
+
+See [PDF_OPTIMIZATION.md](PDF_OPTIMIZATION.md) for complete documentation.
 
 ### Option 3: Using the Original CLI
 
@@ -194,32 +290,157 @@ company_mapping = {
 
 ### POST /api/parse
 
-Parse a financial document.
+Parse a financial document with optimized multi-format support.
 
-**Request**:
+**Request (multipart/form-data)**:
 
-- `file`: PDF file (multipart/form-data)
-- `company_name`: Company name (string)
+- `file`: PDF file (required)
+- `company_name`: Company name (required, e.g., "BRITANNIA")
+- `prefer_standalone`: Prefer standalone over consolidated statements (optional, default: "true")
+- `use_fuzzy_matching`: Enable fuzzy label matching fallback (optional, default: "true")
+
+**Example using curl**:
+
+```bash
+curl -X POST http://localhost:5000/api/parse \
+  -F "file=@statement.pdf" \
+  -F "company_name=HUL" \
+  -F "prefer_standalone=true" \
+  -F "use_fuzzy_matching=true"
+```
 
 **Response**:
 
 ```json
 {
   "success": true,
-  "message": "Successfully processed document. Found 1 table(s).",
+  "message": "Successfully processed document. Found 3 table(s), selected table 1.",
   "data": {
     "company_name": "BRITANNIA",
-    "financial_data": [...]
+    "financial_data": [...],
+    "metadata": {
+      "source_file": "statement.pdf",
+      "table_number": 1,
+      "total_tables": 3,
+      "extraction_method": "tr_number",
+      "processing_time_seconds": 45.2
+    }
   },
   "output_files": {
     "json": "path/to/file.json",
-    "csv_1": "path/to/table.csv",
-    "html_1": "path/to/table.html",
-    "md_1": "path/to/table.md"
+    "csv_1": "path/to/table-1.csv",
+    "html_1": "path/to/table-1.html",
+    "md_1": "path/to/table-1.md"
   },
-  "processing_time": 45.2
+  "processing_time": 45.2,
+  "table_info": {
+    "total_tables": 3,
+    "selected_table": 1,
+    "selection_method": "heuristic"
+  }
 }
 ```
+
+### POST /api/generate-excel
+
+Generate professionally formatted Excel file from JSON financial data.
+
+**Request (application/json)**:
+
+```json
+{
+  "company_name": "BRITANNIA",
+  "financial_data": [...],
+  "save": false  // Optional: save to storage (default: false)
+}
+```
+
+**Example using curl**:
+
+```bash
+# Direct download
+curl -X POST http://localhost:5000/api/generate-excel \
+  -H "Content-Type: application/json" \
+  -d @financial_data.json \
+  --output statement.xlsx
+
+# Save to storage
+curl -X POST http://localhost:5000/api/generate-excel \
+  -H "Content-Type: application/json" \
+  -d '{"company_name": "BRITANNIA", "financial_data": [...], "save": true}'
+```
+
+**Response (save=false)**: Excel file download
+
+**Response (save=true)**:
+
+```json
+{
+  "success": true,
+  "message": "Excel file generated and saved",
+  "file_id": "abc123-def456-ghi789",
+  "download_url": "/api/download-generated/abc123-def456-ghi789"
+}
+```
+
+### POST /api/generate-csv
+
+Generate CSV file from JSON financial data (same parameters as generate-excel).
+
+### GET /api/download-generated/<file_id>
+
+Download previously generated Excel/CSV file.
+
+**Query Parameters**:
+
+- `preview`: Return metadata instead of file (optional, default: false)
+
+**Response (preview=false)**: File download
+
+**Response (preview=true)**:
+
+```json
+{
+  "success": true,
+  "file_info": {
+    "file_id": "abc123-def456-ghi789",
+    "company_name": "BRITANNIA",
+    "file_type": "excel",
+    "file_size": 25600,
+    "download_count": 5
+  }
+}
+```
+
+### GET /api/list-generated-files
+
+List all generated files with optional company filter.
+
+**Query Parameters**:
+
+- `company_name`: Filter by company (optional)
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "count": 3,
+  "files": [
+    {
+      "file_id": "abc123...",
+      "company_name": "BRITANNIA",
+      "file_type": "excel",
+      "file_size": 25600,
+      "download_count": 5
+    }
+  ]
+}
+```
+
+### DELETE /api/delete-generated/<file_id>
+
+Delete generated Excel/CSV file from storage.
 
 ### GET /api/companies
 
@@ -296,6 +517,59 @@ For each processed document, the following files are generated:
 2. **CSV**: Tabular data (`*-table-1.csv`)
 3. **HTML**: Formatted table (`*-table-1.html`)
 4. **Markdown**: Markdown table (`*-table-1.md`)
+5. **Excel**: Professional 47-row financial statement (via API, optional)
+
+## Excel/CSV Export
+
+The Excel/CSV generation feature creates professionally formatted financial statements:
+
+### Excel Format
+
+- **Structure**: 47 rows × 12 columns (A-L)
+- **Styling**: Bold headers, gray backgrounds, borders, double underlines
+- **Formatting**: Indian number style with comma separators (12,34,567)
+- **Negatives**: Bracket notation - `(123)` represents -123
+- **Periods**: 11 columns from Jun 2025 to Dec 2022
+- **Sections**: Revenue, Expenses, PBT, Tax, Net Profit, EBITDA, Growth
+
+### Quick Start
+
+```bash
+# Install dependency
+pip install openpyxl
+
+# Generate Excel from JSON
+curl -X POST http://localhost:5000/api/generate-excel \
+  -H "Content-Type: application/json" \
+  -d @financial_data.json \
+  --output statement.xlsx
+```
+
+### Python Example
+
+```python
+import requests
+
+# Generate Excel
+with open('financial_data.json') as f:
+    data = json.load(f)
+
+response = requests.post(
+    'http://localhost:5000/api/generate-excel',
+    json=data
+)
+
+with open('statement.xlsx', 'wb') as f:
+    f.write(response.content)
+```
+
+### Documentation
+
+- **Quick Start**: [EXCEL_QUICKSTART.md](EXCEL_QUICKSTART.md)
+- **Full API Docs**: [EXCEL_API_DOCUMENTATION.md](EXCEL_API_DOCUMENTATION.md)
+- **Implementation**: [EXCEL_IMPLEMENTATION_SUMMARY.md](EXCEL_IMPLEMENTATION_SUMMARY.md)
+- **Test Suite**: Run `python test_excel_api.py`
+- **Examples**: Run `python example_excel_generation.py`
 
 ## Environment Variables
 
