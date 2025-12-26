@@ -4,14 +4,25 @@ A comprehensive solution for extracting financial data from quarterly reports (P
 
 ## 🚀 Latest Updates
 
-### v2.1 - Excel/CSV Generation ✨ NEW!
+### v2.2 - AI-Powered Excel Generation 🤖 NEW!
+
+- 🤖 **AI Extraction**: Use OpenAI GPT models to extract financial data from any PDF format (zero-config)
+- 🎯 **Adaptive Parsing**: No need for company-specific configurations - works with any financial report
+- 🔄 **Decoupled Workflow**: Parse once → Generate Excel multiple times with different methods
+- 💡 **Smart Detection**: Automatically identifies all financial metrics and periods from tables
+- 📊 **Dual Modes**: Choose between config-driven (fast, free) or AI-powered (adaptive, paid) extraction
+- 💰 **Cost Efficient**: Uses GPT-4o-mini model (~$0.001-$0.003 per document)
+
+See [AI_EXCEL_QUICKSTART.md](AI_EXCEL_QUICKSTART.md) for quick start guide.
+
+### v2.1 - Excel/CSV Generation
 
 - 📊 **Professional Excel Export**: Generate styled 47-row financial statements with borders, colors, and formatting
 - 📄 **CSV Export**: Create matching CSV files for compatibility
 - 🔢 **Indian Number Formatting**: Lakhs/crores style with comma separators and bracket negatives
 - 💾 **File Management**: UUID-based storage with metadata tracking and download counts
 - 🎨 **Professional Styling**: Bold headers, gray backgrounds, double underlines for totals
-- 📁 **Multiple Formats**: Support for 11 financial periods across columns
+- 📁 **Dynamic Periods**: Auto-detects all available periods (not limited to 11 columns)
 
 See [EXCEL_QUICKSTART.md](EXCEL_QUICKSTART.md) for quick start guide.
 
@@ -38,8 +49,10 @@ See [PDF_OPTIMIZATION.md](PDF_OPTIMIZATION.md) for detailed documentation.
 ### Excel/CSV Export
 
 - 📊 **Professional Excel Files**: 47-row financial statement format with full styling
+- 🤖 **AI-Powered Extraction**: Zero-config extraction using OpenAI GPT models
 - 📄 **CSV Export**: Plain text format for easy data import
 - 🔢 **Indian Formatting**: Comma separators (12,34,567) and bracket negatives (123)
+- 🎯 **Dynamic Columns**: Auto-detects available periods (4-24 columns supported)
 - 💾 **File Storage**: Save files with metadata for later download
 - 📁 **File Management**: List, filter, download, and delete generated files
 
@@ -109,9 +122,22 @@ docling_fin_parser/
      ```
 
 4. **Install dependencies**:
+
    ```bash
    pip install -r requirements.txt
    ```
+
+5. **Setup Environment Variables** (for AI features):
+
+   Create a `.env` file in the project root:
+
+   ```bash
+   OPENAI_API_KEY=sk-your-api-key-here
+   ```
+
+   Get your API key from [platform.openai.com](https://platform.openai.com/api-keys)
+
+   See [SETUP_ENV.md](SETUP_ENV.md) for detailed setup instructions.
 
 ## Usage
 
@@ -387,6 +413,66 @@ curl -X POST http://localhost:5000/api/generate-excel \
 
 Generate CSV file from JSON financial data (same parameters as generate-excel).
 
+### POST /api/generate-excel-ai 🤖 NEW!
+
+Generate Excel file using AI extraction from previously parsed results.
+
+**Request (application/json)**:
+
+```json
+{
+  "company_name": "BRITANNIA",
+  "document_name": "Britannia_Unaudited_Q2_June_2026",
+  "preferred_format": "html", // Optional: "html" or "markdown" (default: "html")
+  "save": false // Optional: save to storage (default: false)
+}
+```
+
+**Example using curl**:
+
+```bash
+# Direct download
+curl -X POST http://localhost:5000/api/generate-excel-ai \
+  -H "Content-Type: application/json" \
+  -d '{"company_name": "BRITANNIA", "document_name": "Britannia_Unaudited_Q2_June_2026"}' \
+  --output statement.xlsx
+
+# Save to storage
+curl -X POST http://localhost:5000/api/generate-excel-ai \
+  -H "Content-Type: application/json" \
+  -d '{"company_name": "BRITANNIA", "document_name": "Britannia_Unaudited_Q2_June_2026", "save": true}'
+```
+
+**Response (save=false)**: Excel file download
+
+**Response (save=true)**:
+
+```json
+{
+  "success": true,
+  "message": "Excel file generated with AI extraction",
+  "file_id": "xyz789-abc123-def456",
+  "download_url": "/api/download-generated/xyz789-abc123-def456",
+  "metadata": {
+    "extraction_method": "openai",
+    "model": "gpt-4o-mini",
+    "tokens_used": 3500
+  }
+}
+```
+
+**Features**:
+
+- ✅ No configuration needed - works with any financial report
+- ✅ Automatically extracts all periods and metrics
+- ✅ Uses previously saved HTML/Markdown from `/api/parse`
+- ✅ Cost: ~$0.001-$0.003 per document
+
+**Requirements**:
+
+- Set `OPENAI_API_KEY` environment variable (see [SETUP_ENV.md](SETUP_ENV.md))
+- Must run `/api/parse` first to save HTML/Markdown files
+
 ### GET /api/download-generated/<file_id>
 
 Download previously generated Excel/CSV file.
@@ -575,6 +661,20 @@ with open('statement.xlsx', 'wb') as f:
 
 - `PORT`: API server port (default: 5000)
 - `DEBUG`: Enable Flask debug mode (default: False)
+- `OPENAI_API_KEY`: OpenAI API key for AI-powered extraction (required for AI features)
+- `OPENAI_MODEL`: OpenAI model to use (optional, default: gpt-4o-mini)
+
+**Setting up `.env` file**:
+
+```bash
+# Create .env file in project root
+OPENAI_API_KEY=sk-your-actual-key-here
+OPENAI_MODEL=gpt-4o-mini  # Optional
+PORT=5000
+DEBUG=False
+```
+
+See [SETUP_ENV.md](SETUP_ENV.md) for complete setup guide.
 
 ## Troubleshooting
 
@@ -659,6 +759,9 @@ Key dependencies:
 - **BeautifulSoup4**: HTML parsing
 - **EasyOCR**: Optical character recognition
 - **pypdf**: PDF reading
+- **openai**: OpenAI API client for AI-powered extraction
+- **python-dotenv**: Environment variable management
+- **openpyxl**: Excel file generation
 
 See `requirements.txt` for complete list.
 
@@ -676,14 +779,16 @@ For issues or questions:
 
 ## Future Enhancements
 
+- [x] ~~Export to Excel format~~ ✅ Implemented (v2.1)
+- [x] ~~AI-powered extraction~~ ✅ Implemented (v2.2)
 - [ ] Support for consolidated financial statements
 - [ ] Multi-year comparison views
 - [ ] Batch processing of multiple documents
-- [ ] Export to Excel format
 - [ ] Chart generation from financial data
 - [ ] User authentication and session management
 - [ ] Database storage for historical data
 - [ ] Automated report generation
+- [ ] Multi-language support for financial reports
 
 ---
 
