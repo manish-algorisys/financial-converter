@@ -48,7 +48,6 @@ def find_target_page(pdf_path: Path) -> int | None:
     for page_index, page in enumerate(reader.pages):
         text = page.extract_text() or ""
         text_lower = text.lower()
-        # print(f"text_lower: {text_lower}")
 
         # First, try patterns that explicitly mention "standalone"
         for pattern in TARGET_HEADINGS_WITH_STANDALONE:
@@ -243,8 +242,6 @@ def main():
     else:
         _log.info("Converting entire document")
         conv_res = doc_converter.convert(input_doc_path)
-
-    # print("document results", conv_res.document)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

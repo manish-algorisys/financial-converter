@@ -220,6 +220,7 @@ class FinancialExcelGenerator:
             # Extract data
             self.company_name = json_data.get('company_name', 'Financial Statement')
             financial_data = json_data.get('financial_data', [])
+            print(f"JSON data: {json_data}")  # Debugging line
             
             # Build data map
             self._build_data_map(financial_data)
@@ -245,10 +246,10 @@ class FinancialExcelGenerator:
             self._set_row_data(ws, 8, 'Total Revenue', 'revenue_from_operations', is_total=True)
             
             # Row 9: Other Income
-            self._set_row_data(ws, 9, 'II. Other income', 'other_income', is_section_header=True)
+            self._set_row_data(ws, 9, 'II. Other income', 'other_income')
             
             # Row 10-13: Total Income Section
-            self._set_row_data(ws, 10, 'III. Total Income (I+II)', 'total_income', is_section_header=True)
+            self._set_row_data(ws, 10, 'III. Total Income (I+II)', 'total_income')
             ws['A11'] = 'Sale of Goods Growth YOY'
             ws['A12'] = 'Total Revenue Growth YOY'
             ws['A13'] = 'Total Income Growth YOY'
@@ -477,7 +478,6 @@ class FileManager:
     
     def _save_metadata(self) -> None:
         """Save metadata to disk."""
-        print(f"Saving metadata: {self.metadata}")
         try:
             with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(self.metadata, f, indent=2)
@@ -503,7 +503,6 @@ class FileManager:
         # Copy file to storage with unique name
         extension = '.xlsx' if file_type == 'excel' else '.csv'
         stored_path = self.storage_dir / f"{file_id}{extension}"
-        print(f"stored_path: {stored_path}")
         
         import shutil
         shutil.copy2(file_path, stored_path)

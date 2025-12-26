@@ -9,6 +9,10 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import tempfile
 import shutil
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from parser_core import (
     process_pdf_document,
@@ -16,6 +20,7 @@ from parser_core import (
     get_supported_companies
 )
 from excel_generator import FinancialExcelGenerator, FileManager
+from ai_extractor import AIFinancialExtractor, validate_financial_data
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +51,16 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # Initialize file manager
 file_manager = FileManager(EXCEL_STORAGE_FOLDER)
+
+# Initialize AI extractor (optional - requires OPENAI_API_KEY)
+try:
+    ai_extractor = AIFinancialExtractor()
+    print("AI extractor initialized")
+    _log.info("AI extractor initialized successfully")
+except Exception as e:
+    _log.warning(f"AI extractor not available: {str(e)}")
+    print("AI extractor not available")
+    ai_extractor = None
 
 # Load configuration
 try:
@@ -528,6 +543,141 @@ def generate_csv():
         }), 500
 
 
+@app.route('/api/generate-excel-ai', methods=['POST'])
+def generate_excel_ai():
+    """
+    Generate Excel file using AI extraction from previously parsed results.
+    
+    Expected JSON body:
+    {
+        "company_name": "BRITANNIA",
+        "document_name": "Britannia_Unaudited_Q2_June_2026",  // Output directory name
+        "preferred_format": "html",  // Optional: "html" or "markdown" (default: "html")
+        "save": false  // Optional: save to storage (default: false)
+    }
+    
+    Returns:
+    - Excel file download OR
+    - File ID if save=true
+    """
+    try:
+        # Check if AI extractor is available
+        if ai_extractor is None:
+            return jsonify({
+                'success': False,
+                'error': 'AI extraction not available. Please set OPENAI_API_KEY environment variable.'
+            }), 503
+        
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No data provided'
+            }), 400
+        
+        company_name = data.get('company_name', '').upper()
+        document_name = data.get('document_name', '')
+        preferred_format = data.get('preferred_format', 'html').lower()
+        
+        if not company_name or not document_name:
+            return jsonify({
+                'success': False,
+                'error': 'company_name and document_name are required'
+            }), 400
+        
+        # Validate company name
+        if company_name not in get_supported_companies():
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported company: {company_name}'
+            }), 400
+        
+        # Locate output directory
+        output_dir = OUTPUT_FOLDER / f"{company_name}_{document_name}"
+        
+        if not output_dir.exists():
+            return jsonify({
+                'success': False,
+                'error': f'No parsed results found for {company_name}/{document_name}'
+            }), 404
+        
+        _log.info(f"Extracting financial data using AI for {company_name}/{document_name}")
+        
+        # Extract data using AI
+        try:
+            extracted_data = ai_extractor.extract_from_output_dir(
+                output_dir, 
+                company_name,
+                preferred_format=preferred_format
+            )
+            
+            # Validate extracted data
+            validate_financial_data(extracted_data)
+            
+        except FileNotFoundError as e:
+            return jsonify({
+                'success': False,
+                'error': f'No suitable table files found: {str(e)}'
+            }), 404
+        except ValueError as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid data extracted: {str(e)}'
+            }), 500
+        
+        # Generate Excel from AI-extracted data
+        generator = FinancialExcelGenerator()
+        temp_dir = Path(tempfile.mkdtemp())
+        company_name_safe = company_name.replace(' ', '_')
+        excel_file = temp_dir / f"{company_name_safe}_AI_financial_statement.xlsx"
+        
+        success = generator.generate_excel(extracted_data, excel_file)
+        
+        if not success:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return jsonify({
+                'success': False,
+                'error': 'Failed to generate Excel file from AI-extracted data'
+            }), 500
+        
+        # Check if we should save to storage
+        save_to_storage = data.get('save', False)
+        
+        if save_to_storage:
+            # Save to storage and return file ID
+            file_id = file_manager.save_file(excel_file, company_name, 'excel')
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Excel file generated using AI and saved',
+                'file_id': file_id,
+                'download_url': f'/api/download-generated/{file_id}',
+                'metadata': extracted_data.get('metadata', {})
+            }), 200
+        else:
+            # Return file directly
+            try:
+                return send_file(
+                    excel_file,
+                    as_attachment=True,
+                    download_name=excel_file.name,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+            finally:
+                # Clean up temp file after sending
+                import atexit
+                atexit.register(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+        
+    except Exception as e:
+        _log.error(f"Error generating AI Excel: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
+
+
 @app.route('/api/download-generated/<file_id>', methods=['GET'])
 def download_generated_file(file_id):
     """
@@ -542,7 +692,6 @@ def download_generated_file(file_id):
         
         # Get file metadata
         file_info = file_manager.get_file(file_id)
-        print(f"file_info: {file_info}")
         
         if not file_info:
             return jsonify({
@@ -566,7 +715,15 @@ def download_generated_file(file_id):
             }), 200
         
         # Return file
-        file_path = Path(file_info['stored_path'])
+        # Handle missing stored_path (legacy files or corrupted metadata)
+        if file_info.get('stored_path'):
+            file_path = Path(file_info['stored_path'])
+        else:
+            # Fallback: reconstruct path from file_id
+            extension = '.xlsx' if file_info['file_type'] == 'excel' else '.csv'
+            file_path = EXCEL_STORAGE_FOLDER / f"{file_info['file_id']}{extension}"
+
+        print( f"Downloading file from path: {file_path}" )  # Debugging line
         
         if not file_path.exists():
             return jsonify({

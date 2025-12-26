@@ -10,3 +10,5 @@ flask-cors
 streamlit
 requests
 openpyxl
+openai
+python-dotenv

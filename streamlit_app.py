@@ -10,6 +10,7 @@ from io import BytesIO
 
 # Configuration
 API_URL = "http://localhost:5000"
+OUTPUT_FOLDER = Path('output')
 
 # Page configuration
 st.set_page_config(
@@ -284,6 +285,55 @@ def list_generated_files(company_name=None):
         }
 
 
+def generate_excel_ai(company_name, document_name, preferred_format='html', save_to_storage=False):
+    """Generate Excel using AI extraction from previously parsed results."""
+    try:
+        payload = {
+            'company_name': company_name,
+            'document_name': document_name,
+            'preferred_format': preferred_format,
+            'save': save_to_storage
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/generate-excel-ai",
+            json=payload,
+            timeout=120  # Longer timeout for AI processing
+        )
+        
+        if response.status_code == 200:
+            if save_to_storage:
+                return response.json()
+            else:
+                # Return file content for download
+                return {
+                    'success': True,
+                    'file_content': response.content,
+                    'filename': f"{company_name}_AI_financial_statement.xlsx"
+                }
+        else:
+            error_data = response.json()
+            return {
+                'success': False,
+                'error': error_data.get('error', 'Unknown error')
+            }
+    except requests.exceptions.ConnectionError:
+        return {
+            'success': False,
+            'error': 'Cannot connect to AI API. Make sure the server is running and OPENAI_API_KEY is set.'
+        }
+    except requests.exceptions.Timeout:
+        return {
+            'success': False,
+            'error': 'AI extraction timeout. The document may be too complex.'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error generating AI Excel: {str(e)}'
+        }
+
+
 def display_financial_data(data):
     """Display financial data in a formatted table."""
     if not data or 'financial_data' not in data:
@@ -504,7 +554,13 @@ def main():
         return
     
     # Create tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload & Parse", "✏️ Review & Edit", "📊 View Results", "📁 Saved Files"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📤 Upload & Parse", 
+        "✏️ Review & Edit", 
+        "📊 View Results", 
+        "🤖 AI Excel Generator",
+        "📁 Saved Files"
+    ])
     
     with tab1:
         st.header("Upload Financial Document")
@@ -921,6 +977,166 @@ def main():
             st.info("👈 No results yet. Upload and parse a document in the 'Upload & Parse' tab.")
     
     with tab4:
+        st.header("🤖 AI-Powered Excel Generator")
+        
+        st.info("""
+        **✨ Generate Excel files using AI extraction from previously parsed documents.**
+        
+        This feature uses OpenAI GPT models to intelligently extract financial data from 
+        your parsed HTML/Markdown tables and generate professional Excel statements.
+        
+        **Benefits:**
+        - 🧠 Smart extraction handles format variations
+        - 🔄 Works with existing parse results (no re-upload needed)
+        - 📊 Generates professionally formatted Excel files
+        - ⚡ Faster than manual review for standard formats
+        """)
+        
+        # Check if AI API is available
+        try:
+            health_response = requests.get(f"{API_URL}/health", timeout=2)
+            api_available = health_response.status_code == 200
+        except:
+            api_available = False
+        
+        if not api_available:
+            st.warning("⚠️ AI Excel API is not available. Ensure Flask API is running with OPENAI_API_KEY set.")
+            st.code("export OPENAI_API_KEY='your-key-here'\npython app.py", language="bash")
+            return
+        
+        st.divider()
+        
+        # Input section
+        st.subheader("📋 Select Parsed Document")
+        
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            ai_company_name = st.selectbox(
+                "Company Name",
+                options=get_supported_companies(),
+                help="Select the company",
+                key="ai_company_select"
+            )
+        
+        with col2:
+            # List available parsed documents for the company
+            if ai_company_name:
+                available_docs = []
+                output_folder = OUTPUT_FOLDER
+                for folder in output_folder.glob(f"{ai_company_name}_*"):
+                    if folder.is_dir():
+                        doc_name = folder.name.replace(f"{ai_company_name}_", "")
+                        available_docs.append(doc_name)
+                
+                if available_docs:
+                    ai_document_name = st.selectbox(
+                        "Parsed Document",
+                        options=available_docs,
+                        help="Select a previously parsed document",
+                        key="ai_doc_select"
+                    )
+                else:
+                    st.warning(f"⚠️ No parsed documents found for {ai_company_name}. Parse a document first in the 'Upload & Parse' tab.")
+                    ai_document_name = None
+        
+        # Advanced options
+        with st.expander("⚙️ Advanced Options"):
+            preferred_format = st.radio(
+                "Preferred Source Format",
+                options=["html", "markdown"],
+                index=0,
+                help="Format to use for AI extraction (HTML is generally more structured)"
+            )
+            
+            save_to_storage = st.checkbox(
+                "Save to File Storage",
+                value=False,
+                help="Save generated file for later download (otherwise downloads immediately)"
+            )
+        
+        # Generate button
+        if ai_company_name and ai_document_name:
+            st.divider()
+            
+            # Preview source files
+            output_dir = OUTPUT_FOLDER / f"{ai_company_name}_{ai_document_name}"
+            
+            col_preview1, col_preview2 = st.columns(2)
+            
+            with col_preview1:
+                st.caption("📄 Available Source Files:")
+                table_files = list(output_dir.glob("*-table-*"))
+                for file in table_files:
+                    st.text(f"• {file.name}")
+            
+            with col_preview2:
+                st.caption("ℹ️ Extraction Info:")
+                st.text(f"Company: {ai_company_name}")
+                st.text(f"Document: {ai_document_name}")
+                st.text(f"Format: {preferred_format.upper()}")
+            
+            st.divider()
+            
+            if st.button("🚀 Generate Excel with AI", type="primary", use_container_width=True):
+                with st.spinner('🤖 AI is extracting financial data... This may take 30-60 seconds.'):
+                    result = generate_excel_ai(
+                        ai_company_name, 
+                        ai_document_name,
+                        preferred_format=preferred_format,
+                        save_to_storage=save_to_storage
+                    )
+                
+                if result.get('success'):
+                    st.success("✅ Excel file generated successfully using AI!")
+                    
+                    # Show metadata if available
+                    if 'metadata' in result:
+                        metadata = result['metadata']
+                        
+                        col_meta1, col_meta2, col_meta3 = st.columns(3)
+                        with col_meta1:
+                            st.metric("AI Model", metadata.get('model', 'N/A'))
+                        with col_meta2:
+                            st.metric("Tokens Used", metadata.get('tokens_used', 'N/A'))
+                        with col_meta3:
+                            st.metric("Source Format", metadata.get('source_format', 'N/A').upper())
+                    
+                    if save_to_storage:
+                        # Show file ID and download link
+                        file_id = result.get('file_id')
+                        st.info(f"📁 File saved with ID: `{file_id}`")
+                        st.markdown(f"**Download URL:** {result.get('download_url')}")
+                        
+                        # Download button
+                        if st.button("📥 Download Now", use_container_width=True):
+                            download_url = f"{API_URL}{result.get('download_url')}"
+                            st.markdown(f"[Click here to download]({download_url})")
+                    else:
+                        # Provide download
+                        file_content = result.get('file_content')
+                        filename = result.get('filename', 'financial_statement.xlsx')
+                        
+                        st.download_button(
+                            label="📥 Download Excel File",
+                            data=file_content,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                        
+                        st.balloons()
+                else:
+                    st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
+                    
+                    # Provide helpful suggestions
+                    if 'OPENAI_API_KEY' in result.get('error', ''):
+                        st.warning("💡 Make sure OPENAI_API_KEY environment variable is set before starting the Flask API.")
+                        st.code("export OPENAI_API_KEY='sk-...'", language="bash")
+        else:
+            st.warning("👆 Please select a company and document to continue.")
+    
+    with tab5:
         st.header("📁 Saved Excel/CSV Files")
         
         # Check if Excel API is available
