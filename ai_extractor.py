@@ -25,14 +25,21 @@ class AIFinancialExtractor:
 
 EXTRACT EVERY SINGLE ROW from the table with their values for ALL periods:
 
-**Revenue Section:**
+**Revenue Section (CRITICAL - Follow Hierarchy):**
 - Sale of goods (key: "sale_of_goods")
 - Export sales (key: "export_sales")
 - Service revenue (key: "service_revenue")
 - Other operating revenues (key: "other_operating_revenues")
-- Total revenue from operations (key: "revenue_from_operations")
+- **Total revenue from operations** (key: "revenue_from_operations") 
+  → This is SUM of: sale_of_goods + export_sales + service_revenue + other_operating_revenues
+  → DO NOT include "other_income" in this calculation
+  → If not present in table, calculate it from the above components
 - Other income (key: "other_income")
-- Total income (key: "total_income")
+  → This is SEPARATE from revenue from operations
+  → This is NON-OPERATING income (interest, dividends, gains, etc.)
+- **Total income** (key: "total_income")
+  → This is SUM of: revenue_from_operations + other_income
+  → If not present in table, calculate it from the above components
 
 **Expenses Section:**
 - Cost of materials consumed (key: "cost_of_materials_consumed")
@@ -94,7 +101,10 @@ CRITICAL RULES:
 - Negative values: use brackets "(123.45)" or minus "-123.45"
 - Use EXACT key names from the list above - consistency is critical
 - If a value is not available for a specific period, use empty string ""
-- Do NOT include any explanatory text outside the JSON"""
+- Do NOT include any explanatory text outside the JSON
+- **REVENUE CALCULATION**: revenue_from_operations = sale_of_goods + export_sales + service_revenue + other_operating_revenues (DO NOT ADD other_income here)
+- **TOTAL INCOME CALCULATION**: total_income = revenue_from_operations + other_income
+- If calculated fields (revenue_from_operations, total_income) are present in the table, use those values; otherwise calculate them"""
 
     USER_PROMPT_TEMPLATE = """Extract financial data from this {format} table for {company_name}:
 

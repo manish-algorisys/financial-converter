@@ -595,6 +595,7 @@ def generate_excel_ai():
         
         # Locate output directory
         output_dir = OUTPUT_FOLDER / f"{company_name}_{document_name}"
+        print(f"Looking for output directory at: {output_dir}")
         
         if not output_dir.exists():
             return jsonify({
