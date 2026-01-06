@@ -11,6 +11,7 @@ Complete visual guide to understanding the financial document parser system with
 - [Decision Tree](#decision-tree)
 - [File Flow Diagrams](#file-flow-diagrams)
 - [API Call Sequences](#api-call-sequences)
+- [Streamlit UI Workflow](#streamlit-ui-workflow-ai-excel-generator-tab)
 - [Architecture Components](#architecture-components)
 - [Error Handling Flows](#error-handling-flows)
 - [Performance Optimization](#performance-optimization)
@@ -25,7 +26,7 @@ Complete visual guide to understanding the financial document parser system with
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    FINANCIAL DOCUMENT PARSER SYSTEM                     │
-│                                                                         │
+│                            v2.3 (January 2026)                          │
 │  Input: PDF Financial Reports → Output: Structured Excel/CSV/JSON       │
 └─────────────────────────────────────────────────────────────────────────┘
 
@@ -43,8 +44,16 @@ Complete visual guide to understanding the financial document parser system with
                                 ▼
                     ┌───────────────────────┐
                     │   EXCEL/CSV OUTPUT    │
-                    │   47-row Statement    │
                     │   Indian Formatting   │
+                    │   Multi-Company (v2.3)│  ← NEW
+                    └───────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │   FILE MANAGEMENT     │
+                    │   • Save to Storage   │  ← NEW v2.3
+                    │   • Saved Files Tab   │
+                    │   • Metadata Tracking │
                     └───────────────────────┘
 ```
 
@@ -921,6 +930,149 @@ COST:
   OpenAI API: $0.00226 (3500 tokens)
 ```
 
+### Streamlit UI Workflow (AI Excel Generator Tab)
+
+```
+USER INTERACTION FLOW (v2.3 Update)
+════════════════════════════════════
+
+STEP 1: SELECT DOCUMENTS
+─────────────────────────
+┌─────────────────────────────────────┐
+│  📋 Select Parsed Documents         │
+│                                     │
+│  ☐ BRITANNIA - Doc1                 │
+│  ☑ ITC - Doc2                       │
+│  ☑ P&G - Doc3                       │
+│                                     │
+│  ✅ Selected 2 document(s)           │
+│  🏢 Multi-company: ITC, P&G          │
+└─────────────────────────────────────┘
+           │
+           ▼
+
+STEP 2: CONFIGURE OPTIONS
+──────────────────────────
+┌─────────────────────────────────────┐
+│  ⚙️ Advanced Options                 │
+│                                     │
+│  ◉ Preferred Format: markdown       │
+│  ○ Preferred Format: html           │
+│                                     │
+│  ☑ Save to File Storage             │  ← NEW v2.3 Feature
+│     (Access from Saved Files tab)   │
+└─────────────────────────────────────┘
+           │
+           ▼
+
+STEP 3: UPLOAD TEMPLATE (Optional)
+───────────────────────────────────
+┌─────────────────────────────────────┐
+│  📋 Custom Excel Template            │
+│                                     │
+│  [Choose File] template.xlsx        │
+│  ✅ Template uploaded                │
+│                                     │
+│  Auto-detects:                      │
+│  • Company names from Row 1         │
+│  • Periods from Row 2 headers       │
+│  • Metric names from Column A       │
+└─────────────────────────────────────┘
+           │
+           ▼
+
+STEP 4: GENERATE EXCEL
+──────────────────────
+┌─────────────────────────────────────┐
+│  [🚀 Generate Excel with AI]         │
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+        ┌──────────────────┐
+        │  Processing...   │
+        │  🤖 AI extracting │
+        │  from 2 docs     │
+        └────────┬─────────┘
+                 │
+                 ▼
+
+STEP 5A: SUCCESS (save_to_storage = FALSE)
+───────────────────────────────────────────
+┌─────────────────────────────────────────────┐
+│  ✅ Excel file generated successfully!       │
+│                                             │
+│  📊 AI Model: gpt-4o-mini                   │
+│  📊 Total Tokens: 5,200                     │
+│  📊 Documents: 2                            │
+│                                             │
+│  [📥 Download Excel File]  ← Download button│
+│                                             │
+│  🎈 (Balloons animation)                    │
+└─────────────────────────────────────────────┘
+
+
+STEP 5B: SUCCESS (save_to_storage = TRUE)  ← NEW v2.3
+─────────────────────────────────────────────────────
+┌─────────────────────────────────────────────────┐
+│  ✅ File has been saved to storage!              │
+│                                                 │
+│  📁 File ID: `abc123-def456`                    │
+│  Download URL: /api/files/download/abc123...   │
+│                                                 │
+│  ℹ️ Go to the 'Saved Files' tab above to        │
+│     view, manage, and download your file.      │
+│                                                 │
+│  🎈 (Balloons animation)                        │
+└─────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────┐
+│  📂 Navigate to "Saved Files" Tab               │
+│                                                 │
+│  Files List:                                    │
+│  ┌───────────────────────────────────────────┐ │
+│  │ 📊 financial_statement_consolidated.xlsx  │ │
+│  │    Company: ITC, P&G                      │ │
+│  │    Type: Consolidated (2 companies)       │ │
+│  │    Date: 2026-01-06 14:30                 │ │
+│  │    Size: 45 KB                            │ │
+│  │    [📥 Download] [🗑️ Delete]               │ │
+│  └───────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
+
+
+KEY DIFFERENCES (v2.3 Update)
+─────────────────────────────
+
+BEFORE (v2.2):
+  save_to_storage = TRUE
+    ↓
+  Show download button + navigation hint
+  ↓
+  User could download OR navigate to Saved Files
+
+
+AFTER (v2.3):
+  save_to_storage = TRUE
+    ↓
+  NO download button (removed redundancy)
+  ↓
+  Clear navigation message only
+  ↓
+  User MUST navigate to Saved Files tab
+  ↓
+  Better organization & file management
+
+
+RATIONALE:
+──────────
+• File already in storage → no need for immediate download
+• Encourages using Saved Files tab for better tracking
+• Reduces UI clutter (one less button)
+• Consistent workflow: save → navigate → manage
+• Download available in Saved Files with metadata
+```
+
 ---
 
 ## Architecture Components
@@ -935,10 +1087,12 @@ COST:
 │     FLASK REST API           │      STREAMLIT WEB UI              │
 │     (app.py)                 │      (streamlit_app.py)            │
 │                              │                                    │
-│  • 12+ endpoints             │  • 5-tab interface                 │
-│  • File upload               │  • Visual editing                  │
-│  • Parse/Generate            │  • Download management             │
-│  • CORS enabled              │  • Real-time preview               │
+│  • 12+ endpoints             │  • 3-tab interface (v2.3)          │
+│  • File upload               │    - Upload & Parse                │
+│  • Parse/Generate            │    - AI Excel Generator            │
+│  • CORS enabled              │    - Saved Files                   │
+│                              │  • Multi-company consolidation     │
+│                              │  • File management & tracking      │
 │                              │                                    │
 └──────────────┬───────────────┴────────────────┬───────────────────┘
                │                                │
