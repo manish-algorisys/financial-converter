@@ -1617,7 +1617,6 @@ def main():
                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                     use_container_width=True
                                 )
-                                st.balloons()
                             else:
                                 st.info("ℹ️ File is saved but cannot be downloaded right now. Navigate to 'Saved Files' tab to access it later.")
                         except Exception as e:
@@ -1635,7 +1634,6 @@ def main():
                             use_container_width=True
                         )
                         
-                        st.balloons()
                 else:
                     st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
                     
