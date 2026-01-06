@@ -47,26 +47,26 @@ EXTRACT EVERY SINGLE ROW from the table with their values for ALL periods:
   → If not present in table, calculate it from the above components
 
 **Expenses Section:**
-- Cost of materials consumed (key: "cost_of_materials_consumed")
+- Cost of materials consumed (key: "cost_of_materials_consumed") - also matches: "Cost of material consumed", "Materials consumed", "Raw material consumed"
 - Excise duty (key: "excise_duty")
 - Purchases of stock-in-trade (key: "purchases_stock_in_trade")
-- Changes in inventories (key: "changes_in_inventories")
-- Employee benefits expense (key: "employee_benefits_expense")
-- Finance costs (key: "finance_costs")
-- Depreciation and amortisation expense (key: "depreciation_amortisation_expense")
-- Other expenses (key: "other_expense")
-- Advertising expense (key: "advertising_expense")
-- Impairment losses (key: "impairment_losses")
-- Total expenses (key: "total_expenses")
+- Changes in inventories (key: "changes_in_inventories") - also matches: "Change in inventories", "Inventory changes"
+- Employee benefits expense (key: "employee_benefits_expense") - also matches: "Employee benefit expense", "Staff costs", "Personnel expenses"
+- Finance costs (key: "finance_costs") - also matches: "Finance cost", "Interest expense", "Borrowing costs"
+- Depreciation and amortisation expense (key: "depreciation_amortisation_expense") - also matches: "Depreciation and amortization", "Depreciation & amortisation", "Depreciation"
+- Other expenses (key: "other_expense") - also matches: "Other expense", "Miscellaneous expenses"
+- Advertising expense (key: "advertising_expense") - also matches: "Advertising cost", "Advertisement expense"
+- Impairment losses (key: "impairment_losses") - also matches: "Impairment loss"
+- Total expenses (key: "total_expenses") - also matches: "Total expenditure"
 
 **Profit & Tax Section:**
-- Profit before exceptional items and tax (key: "profit_before_exceptional_and_tax")
-- Exceptional items (key: "exceptional_item_expense")
-- Profit before tax (key: "profit_before_tax")
-- Current tax (key: "current_tax")
-- Deferred tax (key: "deferred_tax")
-- Total tax expense (key: "total_tax_expense")
-- Net profit (key: "net_profit")
+- Profit before exceptional items and tax (key: "profit_before_exceptional_and_tax") - also matches: "Profit before exceptional item and tax", "PBT before exceptional items"
+- Exceptional items (key: "exceptional_item_expense") - also matches: "Exceptional item", "Exceptional item expense"
+- Profit before tax (key: "profit_before_tax") - also matches: "PBT", "Pre-tax profit"
+- Current tax (key: "current_tax") - also matches: "Current income tax"
+- Deferred tax (key: "deferred_tax") - also matches: "Deferred tax expense"
+- Total tax expense (key: "total_tax_expense") - also matches: "Tax expense", "Income tax"
+- Net profit (key: "net_profit") - also matches: "Profit for the period", "Profit after tax", "PAT", "Net income"
 
 **Other Comprehensive Income:**
 - OCI non-reclassifiable items (key: "oci_non_reclass_items")
