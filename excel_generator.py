@@ -235,7 +235,6 @@ class FinancialExcelGenerator:
             # Extract data
             self.company_name = json_data.get('company_name', 'Financial Statement')
             financial_data = json_data.get('financial_data', [])
-            print(f"JSON data: {json_data}")  # Debugging line
             
             # Build data map
             self._build_data_map(financial_data)
@@ -453,7 +452,7 @@ class FinancialExcelGenerator:
                     if cell.value and isinstance(cell.value, str):
                         _log.debug(f"Checking cell {cell.column_letter}{row_num}: '{cell.value}'")
                         # Try to parse period from cell value
-                        period_key = self._parse_period_from_header(cell.value)
+                        period_key = cell.value
                         if period_key:
                             col_letter = cell.column_letter
                             temp_period_columns[col_letter] = period_key
@@ -1006,6 +1005,242 @@ class FinancialExcelGenerator:
         except Exception as e:
             _log.error(f"Error generating CSV: {e}", exc_info=True)
             return False
+    
+    def generate_excel_consolidated(self, companies_data: List[Dict], output_path: Path, template_excel_path: Path = None) -> bool:
+        """
+        Generate consolidated Excel from multiple companies' financial data.
+        
+        Layout:
+        - Column A: Metric names (fixed)
+        - Columns B-E: Company 1 periods
+        - Column F: Blank separator
+        - Columns G-J: Company 2 periods
+        - Column K: Blank separator
+        - And so on...
+        
+        Args:
+            companies_data: List of financial data dicts, each with company_name and financial_data
+            output_path: Path to save consolidated Excel
+            template_excel_path: Optional Excel template for formatting
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not companies_data:
+                _log.error("No companies data provided for consolidation")
+                return False
+            
+            # Load template or create new workbook
+            if template_excel_path and template_excel_path.exists():
+                wb = openpyxl.load_workbook(template_excel_path)
+                ws = wb.active
+            else:
+                wb = openpyxl.Workbook()
+                ws = wb.active
+                ws.title = "Consolidated Financial Statement"
+            
+            # Set column A width
+            ws.column_dimensions['A'].width = 60
+            
+            # Get standard metrics list (from first company or use default)
+            standard_metrics = self._get_standard_metrics()
+            
+            # Extract periods from template Excel if provided, otherwise from data
+            all_periods = []
+            period_headers = []
+            
+            if template_excel_path and template_excel_path.exists():
+                # Extract periods from Row 2 of template
+                _log.info("Extracting periods from template Excel Row 2")
+                for col_idx in range(2, ws.max_column + 1):  # Start from column B (index 2)
+                    cell = ws.cell(row=2, column=col_idx)
+                    if cell.value:
+                        header_text = str(cell.value).strip()
+                        if header_text:  # Only process non-empty headers
+                            # Parse period from header
+                            period_headers.append(header_text)
+                            period_key = self._parse_period_from_header(header_text)
+                            if period_key and period_key not in all_periods:
+                                all_periods.append(period_key)
+                            elif not period_key:
+                                # If parsing fails, use the header text as-is
+                                all_periods.append(header_text)
+                _log.info(f"Extracted {len(all_periods)} periods from template: {all_periods}")
+            
+            # If no periods from template or template not provided, extract from data
+            if not all_periods:
+                _log.info("Extracting periods from financial data")
+                for company_data in companies_data:
+                    financial_data = company_data.get('financial_data', [])
+                    for item in financial_data:
+                        if 'periods' in item:
+                            for period_key in item['periods'].keys():
+                                if period_key not in all_periods:
+                                    all_periods.append(period_key)
+                                    period_headers.append(period_key)
+                        elif 'values' in item:
+                            for period_key in item['values'].keys():
+                                if period_key not in all_periods:
+                                    all_periods.append(period_key)
+                                    period_headers.append(period_key)
+            
+            _log.info(f"Using periods from data: {all_periods}")
+            periods_to_show = all_periods
+            _log.info(f"Using periods for consolidation: {periods_to_show}")
+            
+            # Calculate column layout
+            # Each company gets 4 columns + 1 blank separator
+            current_col = 2  # Start at column B (index 2)
+            
+            # Row 1: Company names (merged across their period columns)
+            row_idx = 1
+            for company_idx, company_data in enumerate(companies_data):
+                company_name = company_data.get('company_name', f'Company {company_idx + 1}')
+                
+                # Calculate column range for this company
+                start_col = current_col
+                end_col = current_col + len(periods_to_show) - 1
+                
+                # Merge cells for company name
+                start_letter = get_column_letter(start_col)
+                end_letter = get_column_letter(end_col)
+                ws.merge_cells(f'{start_letter}{row_idx}:{end_letter}{row_idx}')
+                
+                # Set company name
+                cell = ws[f'{start_letter}{row_idx}']
+                cell.value = company_name
+                cell.font = Font(bold=True, size=14)
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+                cell.fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+                cell.font = Font(bold=True, size=14, color='FFFFFF')
+                
+                # Set column widths for this company's period columns
+                for col_offset in range(len(periods_to_show)):
+                    col_letter = get_column_letter(current_col + col_offset)
+                    ws.column_dimensions[col_letter].width = 15
+                
+                # Move to next company's starting position (4 columns + 1 blank)
+                current_col += len(periods_to_show) + 1
+            
+            # Row 2: Period headers
+            row_idx = 2
+            current_col = 2
+            
+            for company_idx, company_data in enumerate(companies_data):
+                # Add period headers for this company
+                for period_idx, period in enumerate(period_headers):
+                    col_letter = get_column_letter(current_col + period_idx)
+                    cell = ws[f'{col_letter}{row_idx}']
+                    # Format period for display (e.g., "30.06.2025 Q" -> "Q1 FY26")
+                    cell.value = self._format_period_header(period)
+                    cell.font = Font(bold=True)
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    cell.fill = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
+                
+                # Leave blank column
+                current_col += len(periods_to_show) + 1
+
+            
+            # Rows 3+: Metrics and data
+            row_idx = 3
+            
+            for metric in standard_metrics:
+                metric_name = metric['name']
+                metric_key = metric['key']
+                is_bold = metric.get('is_bold', False)
+                
+                # Column A: Metric name
+                cell = ws[f'A{row_idx}']
+                cell.value = metric_name
+                if is_bold:
+                    cell.font = Font(bold=True)
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+                
+                # Fill data for each company
+                current_col = 2
+                
+                for company_idx, company_data in enumerate(companies_data):
+                    # Build data map for this company
+                    self._build_data_map(company_data.get('financial_data', []))
+                    
+                    # Fill period values for this company
+                    for period_idx, period in enumerate(periods_to_show):
+                        col_letter = get_column_letter(current_col + period_idx)
+                        cell = ws[f'{col_letter}{row_idx}']
+                        
+                        # Get value from data map
+                        value = self._get_value(metric_key, period)
+                        
+                        if value and value != 0:
+                            # Handle numeric values
+                            if isinstance(value, (int, float)):
+                                cell.value = value
+                                cell.number_format = '#,##0.00;(#,##0.00)'
+                            else:
+                                # Try to parse as number
+                                try:
+                                    num_val = self._parse_number(str(value))
+                                    if num_val != 0:
+                                        cell.value = num_val
+                                        cell.number_format = '#,##0.00;(#,##0.00)'
+                                    else:
+                                        cell.value = '-'
+                                except:
+                                    cell.value = str(value)
+                        else:
+                            cell.value = '-'
+                        
+                        cell.alignment = Alignment(horizontal='right', vertical='center')
+                    
+                    # Move to next company's columns
+                    current_col += len(periods_to_show) + 1
+                
+                row_idx += 1
+            
+            # Save workbook
+            wb.save(output_path)
+            _log.info(f"Consolidated Excel file generated: {output_path}")
+            return True
+            
+        except Exception as e:
+            _log.error(f"Error generating consolidated Excel: {e}", exc_info=True)
+            return False
+    
+    def _get_standard_metrics(self) -> List[Dict]:
+        """Get standard list of financial metrics."""
+        return [
+            {'name': 'Sale of goods / Income from operations Domestic', 'key': 'sale_of_goods', 'is_bold': False},
+            {'name': 'Sale Exports', 'key': 'export_sales', 'is_bold': False},
+            {'name': 'Revenue from Services', 'key': 'service_revenue', 'is_bold': False},
+            {'name': 'Other operating revenues', 'key': 'other_operating_revenues', 'is_bold': False},
+            {'name': 'Total Revenue', 'key': 'revenue_from_operations', 'is_bold': True},
+            {'name': 'Other income', 'key': 'other_income', 'is_bold': False},
+            {'name': 'Total Income', 'key': 'total_income', 'is_bold': True},
+            {'name': 'Cost of materials consumed', 'key': 'cost_of_materials', 'is_bold': False},
+            {'name': 'Purchases of stock-in-trade', 'key': 'purchases_stock_in_trade', 'is_bold': False},
+            {'name': 'Changes in inventories', 'key': 'changes_in_inventories', 'is_bold': False},
+            {'name': 'Employee benefits expense', 'key': 'employee_benefits', 'is_bold': False},
+            {'name': 'Depreciation and amortization', 'key': 'depreciation_amortization', 'is_bold': False},
+            {'name': 'Other expenses', 'key': 'other_expenses', 'is_bold': False},
+            {'name': 'Total Expenses', 'key': 'total_expenses', 'is_bold': True},
+            {'name': 'Profit before exceptional items and tax', 'key': 'profit_before_exceptional_items', 'is_bold': False},
+            {'name': 'Exceptional items', 'key': 'exceptional_items', 'is_bold': False},
+            {'name': 'Profit before tax', 'key': 'profit_before_tax', 'is_bold': True},
+            {'name': 'Tax expense', 'key': 'tax_expense', 'is_bold': False},
+            {'name': 'Profit for the period', 'key': 'net_profit', 'is_bold': True},
+            {'name': 'Other comprehensive income', 'key': 'other_comprehensive_income', 'is_bold': False},
+            {'name': 'Total comprehensive income', 'key': 'total_comprehensive_income', 'is_bold': True},
+            {'name': 'Basic EPS', 'key': 'basic_eps', 'is_bold': False},
+            {'name': 'Diluted EPS', 'key': 'diluted_eps', 'is_bold': False},
+            {'name': 'EBITDA', 'key': 'ebitda', 'is_bold': True},
+        ]
+    
+    def _format_period_header(self, period: str) -> str:
+        """Format period string for header display - returns original period as-is."""
+        # Return the original period string without formatting
+        # This preserves the full period format from the template (e.g., "30.06.2025 Q")
+        return period
 
 
 class FileManager:

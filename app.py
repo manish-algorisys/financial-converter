@@ -13,6 +13,7 @@ import shutil
 from dotenv import load_dotenv
 from pypdf import PdfReader
 import re
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -58,11 +59,9 @@ file_manager = FileManager(EXCEL_STORAGE_FOLDER)
 # Initialize AI extractor (optional - requires OPENAI_API_KEY)
 try:
     ai_extractor = AIFinancialExtractor()
-    print("AI extractor initialized")
     _log.info("AI extractor initialized successfully")
 except Exception as e:
     _log.warning(f"AI extractor not available: {str(e)}")
-    print("AI extractor not available")
     ai_extractor = None
 
 # Load configuration
@@ -225,7 +224,6 @@ def parse_document():
             }), 400
         
         file = request.files['file']
-        print(f"Received file: {file}")
         
         # Check if file is selected
         if file.filename == '':
@@ -245,7 +243,6 @@ def parse_document():
         filename = secure_filename(file.filename)
         temp_dir = Path(tempfile.mkdtemp())
         file_path = temp_dir / filename
-        print(f"Saving uploaded file to: {file_path}")
         file.save(str(file_path))
         
         # Get or detect company name
@@ -1013,7 +1010,6 @@ def generate_excel_ai():
         
         # Locate output directory
         output_dir = OUTPUT_FOLDER / f"{company_name}_{document_name}"
-        print(f"Looking for output directory at: {output_dir}")
         
         if not output_dir.exists():
             return jsonify({
@@ -1118,6 +1114,190 @@ def generate_excel_ai():
         }), 500
 
 
+@app.route('/api/generate-excel-ai-consolidated', methods=['POST'])
+def generate_excel_ai_consolidated():
+    """
+    Generate consolidated Excel from multiple parsed documents using AI extraction.
+    
+    Expected Form Data:
+    - documents: JSON string array of [{company, document}, ...]
+    - preferred_format: 'html' or 'markdown' (default: 'html')
+    - save: 'true' to save to storage, 'false' to return file directly (default: 'false')
+    - template_excel: Optional Excel template file
+    
+    Returns:
+    - Excel file or file_id based on save parameter
+    """
+    try:
+        data = request.form
+        
+        # Parse documents array
+        try:
+            documents = json.loads(data.get('documents', '[]'))
+        except:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid documents parameter - must be JSON array'
+            }), 400
+        
+        if not documents or not isinstance(documents, list):
+            return jsonify({
+                'success': False,
+                'error': 'No documents provided or invalid format'
+            }), 400
+        
+        preferred_format = data.get('preferred_format', 'html').lower()
+        if preferred_format not in ['html', 'markdown']:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid format - must be html or markdown'
+            }), 400
+        
+        # Handle optional template
+        template_temp_path = None
+        if 'template_excel' in request.files:
+            template_file = request.files['template_excel']
+            if template_file and template_file.filename:
+                # Save template to temp location
+                import tempfile
+                temp_template_dir = Path(tempfile.mkdtemp())
+                template_temp_path = temp_template_dir / secure_filename(template_file.filename)
+                template_file.save(str(template_temp_path))
+        
+        # Extract data from all documents
+        companies_data = []
+        total_tokens = 0
+        
+        for doc_info in documents:
+            company_name = doc_info.get('company', '').upper()
+            document_name = doc_info.get('document', '')
+            
+            if not company_name or not document_name:
+                continue
+            
+            # Find the output directory for this document
+            output_dir = OUTPUT_FOLDER / f"{company_name}_{document_name}"
+            
+            if not output_dir.exists():
+                _log.warning(f"Output directory not found: {output_dir}")
+                continue
+            
+            # Extract data using AI
+            extractor = AIFinancialExtractor()
+            source_format = 'html' if preferred_format == 'html' else 'markdown'
+            
+            try:
+                extracted_data = extractor.extract_from_output_dir(output_dir, company_name, source_format)
+                
+                if extracted_data and isinstance(extracted_data, dict):
+                    _log.info(f"Extracted data for {company_name}/{document_name}")
+                    # Add company metadata
+                    extracted_data['company_name'] = company_name
+                    extracted_data['document_name'] = document_name
+                    companies_data.append(extracted_data)
+                    
+                    # Track tokens
+                    metadata = extracted_data.get('metadata', {})
+                    total_tokens += metadata.get('tokens_used', 0)
+                else:
+                    _log.warning(f"No data extracted for {company_name}/{document_name}")
+            except Exception as extract_error:
+                _log.error(f"Error extracting data for {company_name}/{document_name}: {extract_error}")
+                continue
+        
+        _log.info(f"Total companies with extracted data: {len(companies_data)}")
+        if not companies_data:
+            # Clean up template if exists
+            if template_temp_path and template_temp_path.parent.exists():
+                shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+            _log.error("No valid data extracted from any document")
+            return jsonify({
+                'success': False,
+                'error': 'No valid data extracted from any document. Please ensure documents have been parsed and AI extraction is working.'
+            }), 400
+        
+        # Generate consolidated Excel
+        temp_dir = Path(tempfile.mkdtemp())
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        excel_file = temp_dir / f"Consolidated_{timestamp}.xlsx"
+        
+        generator = FinancialExcelGenerator()
+        template_used = False
+        
+        if template_temp_path and template_temp_path.exists():
+            # Use template
+            success = generator.generate_excel_consolidated(
+                companies_data, excel_file, template_temp_path
+            )
+            template_used = True
+        else:
+            # Use default format
+            success = generator.generate_excel_consolidated(
+                companies_data, excel_file
+            )
+        
+        if not success:
+            # Clean up
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            if template_temp_path and template_temp_path.parent.exists():
+                shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+            return jsonify({
+                'success': False,
+                'error': 'Failed to generate consolidated Excel file'
+            }), 500
+        
+        # Check if we should save to storage
+        save_to_storage = data.get('save', 'false').lower() == 'true'
+        
+        if save_to_storage:
+            # Save to storage
+            file_id = file_manager.save_file(excel_file, 'CONSOLIDATED', 'excel')
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            if template_temp_path and template_temp_path.parent.exists():
+                shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+            
+            return jsonify({
+                'success': True,
+                'message': 'Consolidated Excel file generated and saved',
+                'file_id': file_id,
+                'download_url': f'/api/download-generated/{file_id}',
+                'metadata': {
+                    'total_tokens_used': total_tokens,
+                    'document_count': len(companies_data),
+                    'companies': [d['company_name'] for d in companies_data],
+                    'model': companies_data[0].get('metadata', {}).get('model', 'N/A')
+                },
+                'used_template': template_used
+            }), 200
+        else:
+            # Return file directly
+            try:
+                return send_file(
+                    excel_file,
+                    as_attachment=True,
+                    download_name=excel_file.name,
+                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+            finally:
+                # Clean up after sending
+                import atexit
+                def cleanup():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    if template_temp_path and template_temp_path.parent.exists():
+                        shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+                atexit.register(cleanup)
+    
+    except Exception as e:
+        # Clean up on error
+        if 'template_temp_path' in locals() and template_temp_path and template_temp_path.parent.exists():
+            shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+        _log.error(f"Error generating consolidated Excel: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
+
+
 @app.route('/api/download-generated/<file_id>', methods=['GET'])
 def download_generated_file(file_id):
     """
@@ -1162,8 +1342,6 @@ def download_generated_file(file_id):
             # Fallback: reconstruct path from file_id
             extension = '.xlsx' if file_info['file_type'] == 'excel' else '.csv'
             file_path = EXCEL_STORAGE_FOLDER / f"{file_info['file_id']}{extension}"
-
-        print( f"Downloading file from path: {file_path}" )  # Debugging line
         
         if not file_path.exists():
             return jsonify({

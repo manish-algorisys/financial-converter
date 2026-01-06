@@ -4,7 +4,18 @@ A comprehensive solution for extracting financial data from quarterly reports (P
 
 ## 🚀 Latest Updates
 
-### v2.2 - AI-Powered Excel Generation 🤖 NEW!
+### v2.3 - Multi-Company Consolidation 🏢 NEW!
+
+- 🏢 **Multi-Company Analysis**: Compare multiple companies side-by-side in single Excel
+- 📊 **Smart Layout**: Column A (Metrics) | B-E (Company 1) | Blank | F-I (Company 2) | ...
+- 🎯 **Auto-Detection**: Automatically detects company names from parsed documents
+- 🔄 **Multi-Select UI**: Select multiple documents at once for comparison
+- 📈 **Period Alignment**: Intelligently aligns metrics across different companies
+- 📋 **Template Support**: Use custom Excel templates for consolidated reports
+
+See [MULTI_COMPANY_CONSOLIDATION.md](MULTI_COMPANY_CONSOLIDATION.md) for detailed guide.
+
+### v2.2 - AI-Powered Excel Generation 🤖
 
 - 🤖 **AI Extraction**: Use OpenAI GPT models to extract financial data from any PDF format (zero-config)
 - 🎯 **Adaptive Parsing**: No need for company-specific configurations - works with any financial report

@@ -442,6 +442,78 @@ def generate_excel_ai(company_name, document_name, preferred_format='html', save
             'error': f'Error generating AI Excel: {str(e)}'
         }
 
+
+def generate_excel_ai_consolidated(documents, preferred_format='html', save_to_storage=False, template_excel_file=None):
+    """Generate consolidated Excel from multiple documents using AI extraction."""
+    try:
+        # Prepare form data (consistent with backend expectations)
+        data = {
+            'documents': json.dumps(documents),
+            'preferred_format': preferred_format,
+            'save': str(save_to_storage).lower()
+        }
+        
+        if template_excel_file:
+            # Multipart request with template file
+            files = {
+                'template_excel': (template_excel_file.name, template_excel_file, 
+                                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            }
+            response = requests.post(
+                f"{API_URL}/api/generate-excel-ai-consolidated",
+                files=files,
+                data=data,
+                timeout=300  # Longer timeout for multiple documents
+            )
+        else:
+            # Regular form data request (no files)
+            response = requests.post(
+                f"{API_URL}/api/generate-excel-ai-consolidated",
+                data=data,
+                timeout=300
+            )
+        
+        if response.status_code == 200:
+            if save_to_storage:
+                # Parse JSON response
+                return response.json()
+            else:
+                # Return file content for download
+                # When save=false, backend returns Excel file directly
+                return {
+                    'success': True,
+                    'file_content': response.content,
+                    'filename': f"Consolidated_Financial_Statement_{len(documents)}_companies.xlsx"
+                }
+        else:
+            # Error response
+            try:
+                error_data = response.json()
+                return {
+                    'success': False,
+                    'error': error_data.get('error', 'Unknown error')
+                }
+            except:
+                return {
+                    'success': False,
+                    'error': f'Server error: {response.status_code} - {response.text[:200]}'
+                }
+    except requests.exceptions.ConnectionError:
+        return {
+            'success': False,
+            'error': 'Cannot connect to AI API. Make sure the server is running and OPENAI_API_KEY is set.'
+        }
+    except requests.exceptions.Timeout:
+        return {
+            'success': False,
+            'error': 'AI extraction timeout. Too many documents or documents too complex.'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error generating consolidated AI Excel: {str(e)}'
+        }
+
 def display_financial_data(data):
     """Display financial data in a formatted table."""
     if not data or 'financial_data' not in data:
@@ -627,6 +699,8 @@ def main():
         - 🎯 Auto-detect company name
         - 🔤 Fuzzy metric matching
         - 📋 No syntax required!
+        - 🏢 Multi-company consolidation
+        - 📈 Side-by-side comparison
         
         **v2.2 Features:**
         - 📊 Professional Excel export
@@ -673,10 +747,8 @@ def main():
         return
     
     # Create tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab4, tab5 = st.tabs([
         "📤 Upload & Parse", 
-        "✏️ Review & Edit", 
-        "📊 View Results", 
         "🤖 AI Excel Generator",
         "📁 Saved Files"
     ])
@@ -741,7 +813,6 @@ def main():
                 help="Upload a quarterly financial report in PDF format"
             )
             if uploaded_file:
-                print(f"Uploaded file: {uploaded_file}")
                 uploaded_files = [uploaded_file]
                 
                 # Auto-detect company name
@@ -841,6 +912,7 @@ def main():
                             
                             progress_bar.progress((idx + 1) / len(pdf_files))
                         
+                        st.snow()
                         status_text.text(f"✅ Completed processing {len(pdf_files)} files")
                         st.rerun()
             
@@ -878,9 +950,9 @@ def main():
                             prefer_standalone=prefer_standalone,
                             use_fuzzy_matching=use_fuzzy_matching
                         )
-                        print(result, "--- result")
                             
                         if result.get('success'):
+                            st.snow()
                             st.session_state.parsed_data = result.get('data')
                             st.session_state.output_files = result.get('output_files', {})
                             st.session_state.processing_time = result.get('processing_time')
@@ -903,7 +975,6 @@ def main():
                             
                             # Auto-detect company for this file
                             detected_company = detect_company_name(uploaded_file, companies)
-                            print(detected_company, "---- detected_company")
                             
                             if not detected_company:
                                 # Skip this file if company cannot be detected
@@ -916,7 +987,6 @@ def main():
                                 progress_bar.progress((idx + 1) / len(uploaded_files))
                                 continue
 
-                            print("Parsing document...", uploaded_file)
                             
                             result = parse_document(
                                 uploaded_file,
@@ -931,6 +1001,7 @@ def main():
                             
                             progress_bar.progress((idx + 1) / len(uploaded_files))
                         
+                        st.snow()
                         status_text.text(f"✅ Completed processing {len(uploaded_files)} files")
                         st.rerun()
             
@@ -969,7 +1040,6 @@ def main():
             for idx, result in enumerate(st.session_state.batch_results, 1):
                 filename = result.get('filename', f'File {idx}')
                 detected_company = result.get('detected_company', 'Unknown')
-                print(f"result: => {result}")
                 
                 with st.expander(f"{'✅' if result.get('success') else '❌'} {filename} - {detected_company}", expanded=False):
                     if result.get('success'):
@@ -1275,57 +1345,50 @@ def main():
                     st.code("python app.py", language="bash")
                     st.caption("The Excel API should be running on port 5000")
     
-    with tab2:
-        st.header("Review & Edit Financial Data")
+    # with tab2:
+    #     st.header("Review & Edit Financial Data")
         
-        if st.session_state.parsed_data:
-            # Get document name from session state or output files
-            document_name = st.session_state.document_name
+    #     if st.session_state.parsed_data:
+    #         # Get document name from session state or output files
+    #         document_name = st.session_state.document_name
             
-            if not document_name and st.session_state.output_files and 'json' in st.session_state.output_files:
-                json_path = Path(st.session_state.output_files['json'])
-                # Extract document name from path like: output/COMPANY_DocName/DocName-financial-data.json
-                document_name = json_path.parent.name.split('_', 1)[1] if '_' in json_path.parent.name else json_path.stem.replace('-financial-data', '')
+    #         if not document_name and st.session_state.output_files and 'json' in st.session_state.output_files:
+    #             json_path = Path(st.session_state.output_files['json'])
+    #             # Extract document name from path like: output/COMPANY_DocName/DocName-financial-data.json
+    #             document_name = json_path.parent.name.split('_', 1)[1] if '_' in json_path.parent.name else json_path.stem.replace('-financial-data', '')
             
-            if not document_name:
-                # Fallback: try to infer from company name
-                document_name = st.session_state.parsed_data.get('company_name', 'document')
+    #         if not document_name:
+    #             # Fallback: try to infer from company name
+    #             document_name = st.session_state.parsed_data.get('company_name', 'document')
             
-            # Company info
-            company_name = st.session_state.parsed_data.get('company_name', 'N/A')
-            st.subheader(f"Company: {company_name}")
-            st.caption(f"Document: {document_name}")
+    #         # Company info
+    #         company_name = st.session_state.parsed_data.get('company_name', 'N/A')
+    #         st.subheader(f"Company: {company_name}")
+    #         st.caption(f"Document: {document_name}")
             
-            st.divider()
+    #         st.divider()
             
-            # Display editable financial data
-            display_editable_financial_data(st.session_state.parsed_data, document_name)
+    #         # Display editable financial data
+    #         display_editable_financial_data(st.session_state.parsed_data, document_name)
             
-        else:
-            st.info("👈 No results yet. Upload and parse a document in the 'Upload & Parse' tab first.")
+    #     else:
+    #         st.info("👈 No results yet. Upload and parse a document in the 'Upload & Parse' tab first.")
     
-    with tab3:
-        st.header("View Parsing Results")
-        
-        if st.session_state.parsed_data:
-            # Company info
-            company_name = st.session_state.parsed_data.get('company_name', 'N/A')
-            st.subheader(f"Company: {company_name}")
-            
-            # Display financial data
-            display_financial_data(st.session_state.parsed_data)
-            
-            # JSON view in expander
-            with st.expander("🔍 View Raw JSON"):
-                st.json(st.session_state.parsed_data)
-            
-            # File information
-            if st.session_state.output_files:
-                with st.expander("📁 Generated Files"):
-                    for key, path in st.session_state.output_files.items():
-                        st.text(f"{key}: {Path(path).name}")
-        else:
-            st.info("👈 No results yet. Upload and parse a document in the 'Upload & Parse' tab.")
+    # Temporarily hidden - Review & Edit tab
+    # with tab2:
+    #     st.header("Review & Edit Financial Data")
+    #     if st.session_state.parsed_data:
+    #         display_editable_financial_data(st.session_state.parsed_data, document_name)
+    #     else:
+    #         st.info("👈 No results yet.")
+    
+    # Temporarily hidden - View Results tab  
+    # with tab3:
+    #     st.header("View Parsing Results")
+    #     if st.session_state.parsed_data:
+    #         display_financial_data(st.session_state.parsed_data)
+    #     else:
+    #         st.info("👈 No results yet.")
     
     with tab4:
         st.header("🤖 AI-Powered Excel Generator")
@@ -1358,44 +1421,61 @@ def main():
         st.divider()
         
         # Input section
-        st.subheader("📋 Select Parsed Document")
+        st.subheader("📋 Select Parsed Documents")
         
-        col1, col2 = st.columns([1, 1])
+        # Scan for all available parsed documents with auto-detection
+        available_parsed_docs = []
+        output_folder = OUTPUT_FOLDER
         
-        with col1:
-            ai_company_name = st.selectbox(
-                "Company Name",
-                options=get_supported_companies(),
-                help="Select the company",
-                key="ai_company_select"
+        for folder in output_folder.glob("*_*"):
+            if folder.is_dir():
+                # Extract company and document name from folder structure: COMPANY_DocumentName
+                parts = folder.name.split('_', 1)
+                if len(parts) == 2:
+                    company_name = parts[0]
+                    doc_name = parts[1]
+                    available_parsed_docs.append({
+                        'display': f"{company_name} - {doc_name}",
+                        'company': company_name,
+                        'document': doc_name,
+                        'folder': folder.name
+                    })
+        
+        if not available_parsed_docs:
+            st.warning("⚠️ No parsed documents found. Parse some documents first in the 'Upload & Parse' tab.")
+            selected_docs = None
+        else:
+            # Multi-select for documents
+            st.info(f"📊 Found {len(available_parsed_docs)} parsed documents. Select one or more to generate consolidated Excel.")
+            
+            selected_display_names = st.multiselect(
+                "Select Parsed Documents (multi-select supported)",
+                options=[doc['display'] for doc in available_parsed_docs],
+                help="Select one or more parsed documents. Multiple selections will be consolidated into one Excel file.",
+                key="ai_docs_multiselect"
             )
-        
-        with col2:
-            # List available parsed documents for the company
-            if ai_company_name:
-                available_docs = []
-                output_folder = OUTPUT_FOLDER
-                for folder in output_folder.glob(f"{ai_company_name}_*"):
-                    if folder.is_dir():
-                        doc_name = folder.name.replace(f"{ai_company_name}_", "")
-                        available_docs.append(doc_name)
+            
+            # Map selected display names back to doc info
+            if selected_display_names:
+                selected_docs = [doc for doc in available_parsed_docs if doc['display'] in selected_display_names]
                 
-                if available_docs:
-                    ai_document_name = st.selectbox(
-                        "Parsed Document",
-                        options=available_docs,
-                        help="Select a previously parsed document",
-                        key="ai_doc_select"
-                    )
+                # Show selection summary
+                st.caption(f"✅ Selected {len(selected_docs)} document(s)")
+                
+                # Show company breakdown
+                companies = list(set([doc['company'] for doc in selected_docs]))
+                if len(companies) > 1:
+                    st.success(f"🏢 Multi-company consolidation: {', '.join(companies)}")
                 else:
-                    st.warning(f"⚠️ No parsed documents found for {ai_company_name}. Parse a document first in the 'Upload & Parse' tab.")
-                    ai_document_name = None
+                    st.info(f"🏢 Company: {companies[0]}")
+            else:
+                selected_docs = None
         
         # Advanced options
         with st.expander("⚙️ Advanced Options"):
             preferred_format = st.radio(
                 "Preferred Source Format",
-                options=["html", "markdown"],
+                options=["markdown", "html"],
                 index=0,
                 help="Format to use for AI extraction (HTML is generally more structured)"
             )
@@ -1407,127 +1487,102 @@ def main():
             )
         
         # Excel Template Upload Section
-        with st.expander("📋 Custom Excel Template (v2.3 - NEW: Column Mapping)", expanded=False):
+        with st.expander("📋 Custom Excel Template", expanded=False):
             st.markdown("""
-            **✨ NEW: Two ways to customize your Excel output!**
+            Upload an Excel template with your preferred layout.
             
-            ### 📊 Method 1: Column Mapping (Recommended - No Syntax Required!)
-            
-            **Simple 3-row structure:**
-            ```
-            Row 1: [A1: empty] | [B1:E1: MERGED] COMPANY_NAME_PLACEHOLDER
-            Row 2: Metric      | 30.06.2025 Q    | 31.03.2025 Q    | 30.06.2024 Q    | 31.03.2025 Y
-            Row 3: Sale of Goods
-            Row 4: Export Sales
-            Row 5: Net Profit
-            ...
-            ```
+            **Template Structure:**
+            - **Row 1:** Company name (merged across period columns B1:E1)
+            - **Row 2:** Period headers (e.g., `30.06.2025 Q`, `31.03.2025 Y`)
+            - **Row 3+:** Metric names in Column A, data fills automatically
             
             **Features:**
-            - ✅ No placeholder syntax needed!
-            - ✅ Company name auto-filled in merged B1:E1 cells
-            - ✅ Headers detected automatically from Row 2
-            - ✅ Fuzzy matching for metric names (typo-tolerant)
-            - ✅ Professional financial report format
+            - 🎯 Auto-detects company name and periods from headers
+            - 🔍 Fuzzy metric matching (handles variations)
+            - ✅ No special syntax required
             
-            **Supported Period Formats (Row 2 Headers):**
-            - `30.06.2025 Q` - Quarterly with date and Q suffix
-            - `31.03.2025 Y` - Yearly with date and Y suffix
-            - `Q1 FY2026`, `Q2 2025` - Quarter labels
-            - `FY 2025`, `Year 2025` - Year labels
-            
-            **Supported Metric Names (Column A from Row 3):**
-            Sale of Goods, Export Sales, Revenue from Operations, Other Income, Total Income,
-            Cost of Materials Consumed, Employee Benefits Expense, Finance Costs, 
-            Depreciation and Amortisation, Other Expenses, Total Expenses,
-            Profit Before Tax, Net Profit, EPS Basic, EPS Diluted, etc.
-            
-            ---
-            
-            ### 🔧 Method 2: Placeholder Mode (Advanced - Legacy)
-            
-            Use `{{key[period]}}` syntax for flexible placement anywhere in your template.
-            
-            **Placeholder Examples:**
-            - `{{company_name}}` - Company name
-            - `{{revenue_from_operations[30.06.2025]}}` - Revenue for Q1 FY2026
-            - `{{net_profit[31.03.2025_Y]}}` - Net profit for FY2025
-            - `{{eps_basic[30.06.2024]}}` - EPS for Q1 FY2025
-            
-            ---
-            
-            **System Behavior:**
-            1. ✅ Tries Column Mapping first (if Row 2 has period headers)
-            2. ✅ Falls back to Placeholder mode (if `{{}}` placeholders found)
-            3. ⚠️ Returns template unchanged if neither detected
-            
-            **Sample Template:** `templates/financial_summary_template_column_mapping.xlsx`
-            
-            📖 **Full Documentation:** See `COLUMN_MAPPING_GUIDE.md` for detailed instructions
+            📚 **Full Guide:** See `COLUMN_MAPPING_GUIDE.md` for detailed instructions
             """)
             
             template_excel_file = st.file_uploader(
                 "Upload Excel Template",
                 type=['xlsx', 'xls'],
-                help="Upload Excel template (supports Column Mapping or Placeholder modes)",
+                help="Upload Excel template (auto-detects structure and fills data)",
                 key="ai_excel_template_uploader"
             )
             
             if template_excel_file:
                 st.success(f"✅ Template uploaded: {template_excel_file.name}")
-                st.info("💡 System will automatically detect structure (Column Mapping or Placeholder mode) and fill data accordingly.")
-                
-                # Provide helpful hints
-                col_hint1, col_hint2 = st.columns(2)
-                with col_hint1:
-                    st.caption("**Column Mapping Format:**")
-                    st.code("Row 1: Company Name (merged)\nRow 2: Headers\nRow 3+: Metrics", language="text")
-                with col_hint2:
-                    st.caption("**Placeholder Format:**")
-                    st.code("{{key[period]}}\nAnywhere in template", language="text")
-                
                 template_excel_file.seek(0)  # Reset for later use
             else:
                 st.info("💡 Without a template, the default 47-row format will be used")
         
         # Generate button
-        if ai_company_name and ai_document_name:
+        if selected_docs:
             st.divider()
             
             # Preview source files
-            output_dir = OUTPUT_FOLDER / f"{ai_company_name}_{ai_document_name}"
-            
-            col_preview1, col_preview2 = st.columns(2)
-            
-            with col_preview1:
-                st.caption("📄 Available Source Files:")
-                table_files = list(output_dir.glob("*-table-*"))
-                for file in table_files:
-                    st.text(f"• {file.name}")
-            
-            with col_preview2:
-                st.caption("ℹ️ Extraction Info:")
-                st.text(f"Company: {ai_company_name}")
-                st.text(f"Document: {ai_document_name}")
-                st.text(f"Format: {preferred_format.upper()}")
+            if len(selected_docs) == 1:
+                st.caption("📄 Single Document Mode")
+                doc = selected_docs[0]
+                output_dir = OUTPUT_FOLDER / doc['folder']
+                
+                col_preview1, col_preview2 = st.columns(2)
+                
+                with col_preview1:
+                    st.caption("📄 Available Source Files:")
+                    table_files = list(output_dir.glob("*-table-*"))
+                    for file in table_files:
+                        st.text(f"• {file.name}")
+                
+                with col_preview2:
+                    st.caption("ℹ️ Extraction Info:")
+                    st.text(f"Company: {doc['company']}")
+                    st.text(f"Document: {doc['document']}")
+                    st.text(f"Format: {preferred_format.upper()}")
+            else:
+                st.caption(f"📊 Multi-Company Consolidation Mode ({len(selected_docs)} documents)")
+                
+                # Show documents in a compact table
+                preview_data = []
+                for doc in selected_docs:
+                    preview_data.append({
+                        'Company': doc['company'],
+                        'Document': doc['document'],
+                        'Folder': doc['folder']
+                    })
+                
+                st.dataframe(preview_data, use_container_width=True, hide_index=True)
+                
+                st.info("""
+                **📋 Consolidated Excel Structure:**
+                - Column A: Metric names (fixed)
+                - Columns B-E: Company 1 periods
+                - Column F: Blank separator
+                - Columns G-J: Company 2 periods
+                - And so on...
+                """)
             
             st.divider()
             
             if st.button("🚀 Generate Excel with AI", type="primary", use_container_width=True):
-                with st.spinner('🤖 AI is extracting financial data... This may take 30-60 seconds.'):
+                with st.spinner(f'🤖 AI is extracting financial data from {len(selected_docs)} document(s)...'):
                     # Get template file if provided
                     template_file = st.session_state.get('ai_excel_template_uploader')
                     
-                    result = generate_excel_ai(
-                        ai_company_name, 
-                        ai_document_name,
+                    # Prepare documents list for API
+                    documents = [{'company': doc['company'], 'document': doc['document']} for doc in selected_docs]
+                    
+                    result = generate_excel_ai_consolidated(
+                        documents=documents,
                         preferred_format=preferred_format,
                         save_to_storage=save_to_storage,
                         template_excel_file=template_file
                     )
                 
                 if result.get('success'):
-                    st.success("✅ Excel file generated successfully using AI!")
+                    st.snow()
+                    st.success(f"✅ Excel file generated successfully using AI! Processed {len(selected_docs)} document(s).")
                     
                     # Show metadata if available
                     if 'metadata' in result:
@@ -1537,10 +1592,13 @@ def main():
                         with col_meta1:
                             st.metric("AI Model", metadata.get('model', 'N/A'))
                         with col_meta2:
-                            st.metric("Tokens Used", metadata.get('tokens_used', 'N/A'))
+                            st.metric("Total Tokens", metadata.get('total_tokens_used', 'N/A'))
                         with col_meta3:
-                            st.metric("Source Format", metadata.get('source_format', 'N/A').upper())
+                            st.metric("Documents", len(selected_docs))
                     
+                    file_content = result.get('file_content')
+                    filename = result.get('filename', 'financial_statement_consolidated.xlsx')
+
                     if save_to_storage:
                         # Show file ID and download link
                         file_id = result.get('file_id')
@@ -1548,14 +1606,17 @@ def main():
                         st.markdown(f"**Download URL:** {result.get('download_url')}")
                         
                         # Download button
-                        if st.button("📥 Download Now", use_container_width=True):
-                            download_url = f"{API_URL}{result.get('download_url')}"
-                            st.markdown(f"[Click here to download]({download_url})")
+                        st.download_button(
+                            label="📥 Download Excel File",
+                            data=file_content,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+
+                        st.balloons()
                     else:
                         # Provide download
-                        file_content = result.get('file_content')
-                        filename = result.get('filename', 'financial_statement.xlsx')
-                        
                         st.download_button(
                             label="📥 Download Excel File",
                             data=file_content,
@@ -1573,7 +1634,7 @@ def main():
                         st.warning("💡 Make sure OPENAI_API_KEY environment variable is set before starting the Flask API.")
                         st.code("export OPENAI_API_KEY='sk-...'", language="bash")
         else:
-            st.warning("👆 Please select a company and document to continue.")
+            st.warning("👆 Please select at least one parsed document to continue.")
     
     with tab5:
         st.header("📁 Saved Excel/CSV Files")
@@ -1650,8 +1711,8 @@ def main():
                                 if download_response.status_code == 200:
                                     file_data = download_response.content
                                 else:
-                                    print(f"Download failed due to error {download_response.text}")
                                     error_msg = f"Status {download_response.status_code}"
+                                    st.error("❌ Failed to fetch file for download")
                             except requests.exceptions.ConnectionError:
                                 error_msg = "API not reachable"
                             except requests.exceptions.Timeout:
@@ -1659,13 +1720,11 @@ def main():
                             except Exception as e:
                                 error_msg = f"Error: {str(e)[:30]}"
 
-                            print(f"File {file_info['original_name']} download fetch: {'Success' if file_data else 'Failed - ' + error_msg}")
                             
                             # Show download button if file data loaded successfully
                             if file_data:
                                 mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
                                     if file_info['file_type'] == 'excel' else "text/csv"
-                                print(f"Preparing download for {file_info['original_name']} with MIME {mime_type}")
                                 
                                 st.download_button(
                                     label="⬇️ Download",
