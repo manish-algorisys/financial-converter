@@ -17,7 +17,12 @@ _log = logging.getLogger(__name__)
 
 
 class FinancialExcelGenerator:
-    """Generate Excel and CSV files from financial JSON data."""
+    """Generate Excel and CSV files from financial JSON data.
+    
+    Supports two modes:
+    1. Fixed format (47-row standard layout)
+    2. JSON template-based (customizable rows and columns)
+    """
     
     # Period mapping: JSON keys to column positions (B=1, C=2, etc.)
     PERIOD_MAPPING = {
@@ -93,10 +98,12 @@ class FinancialExcelGenerator:
         
         for item in financial_data:
             key = self._normalize_key(item.get('key', ''))
-            values = item.get('values', {})
+            # Support both 'values' and 'periods' keys for backward compatibility
+            values = item.get('values', item.get('periods', {}))
             
             if key:
                 self.data_map[key] = values
+                _log.debug(f"Mapped key '{key}' with {len(values)} periods: {list(values.keys())}")
     
     def _get_value(self, key: str, period: str) -> float:
         """Get numeric value for a key and period."""
@@ -104,8 +111,14 @@ class FinancialExcelGenerator:
         
         if normalized_key in self.data_map:
             values = self.data_map[normalized_key]
-            value_str = values.get(period, '')
-            return self._parse_number(value_str)
+            value = values.get(period, '')
+            
+            # If value is already a number, return it
+            if isinstance(value, (int, float)):
+                return float(value)
+            
+            # Otherwise parse it as a string
+            return self._parse_number(value)
         
         return 0.0
     
@@ -205,13 +218,15 @@ class FinancialExcelGenerator:
         if is_total:
             self._apply_total_style(ws, row)
     
-    def generate_excel(self, json_data: Dict, output_path: Path) -> bool:
+    def generate_excel(self, json_data: Dict, output_path: Path, template_json_path: Path = None, template_excel_path: Path = None) -> bool:
         """
         Generate Excel file from JSON financial data.
         
         Args:
             json_data: Financial data in JSON format
             output_path: Path to save Excel file
+            template_json_path: Optional path to JSON template file defining structure
+            template_excel_path: Optional path to Excel template file
         
         Returns:
             True if successful, False otherwise
@@ -225,7 +240,15 @@ class FinancialExcelGenerator:
             # Build data map
             self._build_data_map(financial_data)
             
-            # Create workbook
+            # Check if Excel template is provided (takes priority)
+            if template_excel_path and template_excel_path.exists():
+                return self._generate_from_excel_template(json_data, output_path, template_excel_path)
+            
+            # Check if JSON template is provided
+            if template_json_path and template_json_path.exists():
+                return self._generate_from_json_template(json_data, output_path, template_json_path)
+            
+            # Otherwise use fixed format
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Financial Statement"
@@ -323,6 +346,541 @@ class FinancialExcelGenerator:
             
         except Exception as e:
             _log.error(f"Error generating Excel: {e}", exc_info=True)
+            return False
+    
+    def _generate_from_excel_template(self, json_data: Dict, output_path: Path, template_excel_path: Path) -> bool:
+        """
+        Generate Excel by filling data in template using column mapping approach.
+        
+        Two modes supported:
+        1. Placeholder mode: {{key[period]}} syntax
+        2. Column mapping mode: Headers in Row 1, Metrics in Column A
+        
+        Args:
+            json_data: Financial data with company_name and financial_data
+            output_path: Path to save filled Excel file
+            template_excel_path: Path to Excel template
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import re
+            from openpyxl import load_workbook
+            from fuzzywuzzy import fuzz
+            
+            _log.info(f"Loading Excel template: {template_excel_path}")
+            
+            # Load template workbook
+            wb = load_workbook(template_excel_path)
+            
+            # Build data map
+            self.company_name = json_data.get('company_name', 'UNKNOWN')
+            financial_data = json_data.get('financial_data', [])
+            self._build_data_map(financial_data)
+            
+            # Try column mapping approach first, then fallback to placeholder mode
+            placeholder_mode_used = False
+            column_mapping_mode_used = False
+            
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                _log.info(f"Processing sheet: {sheet_name}")
+                
+                # Try column mapping approach
+                mapping_success = self._apply_column_mapping(ws)
+                if mapping_success:
+                    column_mapping_mode_used = True
+                    _log.info(f"Applied column mapping to sheet: {sheet_name}")
+                else:
+                    # Fallback to placeholder mode
+                    placeholder_success = self._apply_placeholder_mode(ws)
+                    if placeholder_success:
+                        placeholder_mode_used = True
+                        _log.info(f"Applied placeholder mode to sheet: {sheet_name}")
+            
+            # Save filled workbook
+            wb.save(output_path)
+            
+            if column_mapping_mode_used:
+                _log.info(f"Excel generated using column mapping approach: {output_path}")
+            elif placeholder_mode_used:
+                _log.info(f"Excel generated using placeholder mode: {output_path}")
+            else:
+                _log.warning(f"Excel saved without data filling (no mappings or placeholders found): {output_path}")
+            
+            return True
+            
+        except Exception as e:
+            _log.error(f"Error generating Excel from template: {str(e)}", exc_info=True)
+            return False
+    
+    def _apply_column_mapping(self, ws) -> bool:
+        """
+        Apply column mapping approach to fill data.
+        
+        Detects:
+        - Row 1: Company name in merged cells (B1:E1)
+        - Row 2: Period headers (e.g., "30.06.2025 Q", "31.03.2025 Y")
+        - Column A (from row 3): Metric names (e.g., "Sale of Goods", "Total Revenue")
+        
+        Returns:
+            True if mapping was applied, False if not enough data to map
+        """
+        try:
+            from fuzzywuzzy import fuzz
+            import re
+            
+            # Step 0: Check for company name placeholder in row 1 (merged B1:E1)
+            company_cell = ws['B1']
+            if company_cell.value and isinstance(company_cell.value, str):
+                if 'COMPANY_NAME_PLACEHOLDER' in company_cell.value or 'company_name' in company_cell.value.lower():
+                    company_cell.value = self.company_name
+                    _log.info(f"Filled company name in merged cell B1: {self.company_name}")
+            
+            # Step 1: Find header row (scan first 5 rows)
+            header_row_num = None
+            period_columns = {}  # {col_letter: period_key}
+            
+            _log.info("Scanning for period headers in first 5 rows...")
+            
+            for row_num in range(1, 6):
+                row = list(ws[row_num])
+                period_count = 0
+                temp_period_columns = {}
+                
+                for col_idx, cell in enumerate(row[1:], start=2):  # Skip column A
+                    if cell.value and isinstance(cell.value, str):
+                        _log.debug(f"Checking cell {cell.column_letter}{row_num}: '{cell.value}'")
+                        # Try to parse period from cell value
+                        period_key = self._parse_period_from_header(cell.value)
+                        if period_key:
+                            col_letter = cell.column_letter
+                            temp_period_columns[col_letter] = period_key
+                            period_count += 1
+                            _log.debug(f"  -> Parsed as period: {period_key}")
+                
+                # If we found 2+ periods, this is likely the header row
+                if period_count >= 2:
+                    header_row_num = row_num
+                    period_columns = temp_period_columns
+                    _log.info(f"Found header row at row {header_row_num} with {period_count} periods: {period_columns}")
+                    break
+            
+            if not period_columns:
+                _log.debug("No period columns detected - column mapping not applicable")
+                return False
+            
+            # Step 2: Create metric name to key mapping
+            metric_key_map = self._create_metric_key_map()
+            
+            # Step 3: Scan column A for metric names and fill data
+            data_filled_count = 0
+            metrics_start_row = header_row_num + 1
+            
+            _log.info(f"Scanning column A for metrics starting from row {metrics_start_row}...")
+            _log.debug(f"Header row: {header_row_num}, Metrics start row: {metrics_start_row}")
+            
+            for row_num in range(metrics_start_row, ws.max_row + 1):
+                metric_cell = ws[f'A{row_num}']
+                
+                if metric_cell.value and isinstance(metric_cell.value, str):
+                    metric_name = str(metric_cell.value).strip()
+                    
+                    # Skip empty or very short strings
+                    if len(metric_name) < 3:
+                        continue
+                    
+                    _log.debug(f"Row {row_num}: Checking metric '{metric_name}'")
+                    
+                    # Find matching key for this metric
+                    matched_key = self._match_metric_to_key(metric_name, metric_key_map)
+                    
+                    if matched_key:
+                        _log.debug(f"  -> Matched to key: {matched_key}")
+                        # Fill data for each period column
+                        for col_letter, period_key in period_columns.items():
+                            value = self._get_value(matched_key, period_key)
+                            cell = ws[f'{col_letter}{row_num}']
+                            
+                            if value != 0:
+                                formatted_value = self._format_number(value)
+                                cell.value = formatted_value
+                                data_filled_count += 1
+                                _log.debug(f"  -> Filled {col_letter}{row_num} with {formatted_value} (key={matched_key}, period={period_key})")
+                            else:
+                                cell.value = '-'
+                    else:
+                        _log.debug(f"  -> No match found")
+            
+            if data_filled_count > 0:
+                _log.info(f"Column mapping filled {data_filled_count} cells")
+                return True
+            else:
+                _log.debug("Column mapping found structure but no data to fill")
+                return False
+                
+        except Exception as e:
+            _log.debug(f"Column mapping failed: {str(e)}")
+            return False
+    
+    def _parse_period_from_header(self, header_text: str) -> str:
+        """
+        Parse period key from header text.
+        
+        Examples:
+        - "30.06.2025 Q" → "30.06.2025"
+        - "31.03.2025 Y" → "31.03.2025_Y"
+        - "Q1 FY2026" → "30.06.2025" (if we can infer)
+        - "FY 2025" → "31.03.2025_Y"
+        """
+        import re
+        
+        header_text = str(header_text).strip()
+        
+        # Pattern 1: Direct date format with Q or Y suffix
+        # "30.06.2025 Q" or "31.03.2025 Y"
+        match = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*([QY])', header_text, re.IGNORECASE)
+        if match:
+            date_part = match.group(1)
+            suffix = match.group(2).upper()
+            if suffix == 'Y':
+                return f"{date_part}_Y"
+            return date_part
+        
+        # Pattern 2: Just the date without suffix (assume quarterly)
+        # "30.06.2025"
+        match = re.search(r'\b(\d{2}\.\d{2}\.\d{4})\b', header_text)
+        if match:
+            return match.group(1)
+        
+        # Pattern 3: Quarterly labels
+        # "Q1 FY2026", "Q1 2025", etc.
+        match = re.search(r'Q[1-4].*?(20\d{2})', header_text, re.IGNORECASE)
+        if match:
+            year = match.group(1)
+            # Map Q1 FY2026 → 30.06.2025
+            if 'Q1' in header_text.upper():
+                return f"30.06.{int(year)-1}"
+            elif 'Q2' in header_text.upper():
+                return f"30.09.{int(year)-1}"
+            elif 'Q3' in header_text.upper():
+                return f"31.12.{int(year)-1}"
+            elif 'Q4' in header_text.upper():
+                return f"31.03.{year}"
+        
+        # Pattern 4: Yearly labels
+        # "FY 2025", "FY2025", "Year 2025"
+        match = re.search(r'(?:FY|Year)\s*(20\d{2})', header_text, re.IGNORECASE)
+        if match:
+            year = match.group(1)
+            return f"31.03.{year}_Y"
+        
+        return None
+    
+    def _create_metric_key_map(self) -> Dict[str, str]:
+        """
+        Create mapping from metric display names to keys.
+        
+        Returns:
+            {display_name: key} dictionary
+        """
+        metric_map = {
+            # Revenue section
+            'sale of goods': 'sale_of_goods',
+            'sale of products': 'sale_of_goods',
+            'export sales': 'export_sales',
+            'service revenue': 'service_revenue',
+            'other operating revenue': 'other_operating_revenues',
+            'other operating revenues': 'other_operating_revenues',
+            'revenue from operations': 'revenue_from_operations',
+            'total revenue from operations': 'revenue_from_operations',
+            'total revenue': 'revenue_from_operations',
+            'other income': 'other_income',
+            'total income': 'total_income',
+            
+            # Expenses
+            'cost of materials consumed': 'cost_of_materials_consumed',
+            'cost of materials': 'cost_of_materials_consumed',
+            'excise duty': 'excise_duty',
+            'purchases of stock-in-trade': 'purchases_stock_in_trade',
+            'purchases stock in trade': 'purchases_stock_in_trade',
+            'changes in inventories': 'changes_in_inventories',
+            'employee benefits expense': 'employee_benefits_expense',
+            'employee benefit expense': 'employee_benefits_expense',
+            'finance costs': 'finance_costs',
+            'depreciation and amortisation': 'depreciation_amortisation_expense',
+            'depreciation and amortization': 'depreciation_amortisation_expense',
+            'other expenses': 'other_expense',
+            'other expense': 'other_expense',
+            'advertising expense': 'advertising_expense',
+            'impairment losses': 'impairment_losses',
+            'total expenses': 'total_expenses',
+            
+            # Profit & Tax
+            'profit before exceptional items and tax': 'profit_before_exceptional_and_tax',
+            'exceptional items': 'exceptional_item_expense',
+            'profit before tax': 'profit_before_tax',
+            'current tax': 'current_tax',
+            'deferred tax': 'deferred_tax',
+            'total tax expense': 'total_tax_expense',
+            'tax expense': 'total_tax_expense',
+            'net profit': 'net_profit',
+            'profit for the period': 'net_profit',
+            
+            # OCI
+            'other comprehensive income': 'other_comprehensive_income',
+            'total comprehensive income': 'total_comprehensive_income',
+            
+            # Equity & EPS
+            'paid-up equity share capital': 'paid_up_equity_share_capital',
+            'equity share capital': 'paid_up_equity_share_capital',
+            'other equity': 'other_equity',
+            'eps basic': 'eps_basic',
+            'eps (basic)': 'eps_basic',
+            'basic eps': 'eps_basic',
+            'eps diluted': 'eps_diluted',
+            'eps (diluted)': 'eps_diluted',
+            'diluted eps': 'eps_diluted',
+        }
+        
+        return metric_map
+    
+    def _match_metric_to_key(self, metric_name: str, metric_map: Dict[str, str]) -> str:
+        """
+        Match metric name to key using fuzzy matching.
+        
+        Args:
+            metric_name: Display name from Excel
+            metric_map: Mapping dictionary
+        
+        Returns:
+            Matched key or None
+        """
+        from fuzzywuzzy import fuzz
+        
+        metric_name_lower = metric_name.lower().strip()
+        
+        # Try exact match first
+        if metric_name_lower in metric_map:
+            return metric_map[metric_name_lower]
+        
+        # Try fuzzy matching
+        best_match = None
+        best_score = 0
+        
+        for display_name, key in metric_map.items():
+            score = fuzz.ratio(metric_name_lower, display_name)
+            if score > best_score and score > 80:  # 80% threshold
+                best_score = score
+                best_match = key
+        
+        if best_match:
+            _log.debug(f"Matched '{metric_name}' to '{best_match}' (score: {best_score})")
+        
+        return best_match
+    
+    def _apply_placeholder_mode(self, ws) -> bool:
+        """
+        Apply placeholder replacement mode.
+        
+        Finds {{key[period]}} placeholders and replaces with data.
+        
+        Returns:
+            True if placeholders were replaced, False otherwise
+        """
+        import re
+        
+        placeholder_pattern = re.compile(r'\{\{([^}\[]+)(?:\[([^]]+)\])?\}\}')
+        total_placeholders_found = 0
+        total_placeholders_replaced = 0
+        
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str):
+                    matches = placeholder_pattern.findall(str(cell.value))
+                    
+                    if matches:
+                        total_placeholders_found += len(matches)
+                        cell_value = str(cell.value)
+                        
+                        for match in matches:
+                            key = match[0].strip()
+                            period = match[1].strip() if match[1] else None
+                            
+                            if key == 'company_name':
+                                replacement = self.company_name
+                                total_placeholders_replaced += 1
+                            elif period:
+                                value = self._get_value(key, period)
+                                replacement = self._format_number(value) if value != 0 else '-'
+                                total_placeholders_replaced += 1
+                            else:
+                                replacement = f"{{{{ERROR: {key} needs period}}}}"
+                                _log.warning(f"Placeholder {{{{key}}}} found without period")
+                            
+                            if period:
+                                placeholder = "{{" + key + "[" + period + "]}}"
+                            else:
+                                placeholder = "{{" + key + "}}"
+                            cell_value = cell_value.replace(placeholder, str(replacement))
+                        
+                        # Update cell value
+                        try:
+                            if cell_value and cell_value != '-':
+                                numeric_value = cell_value.replace(',', '')
+                                if '(' in numeric_value and ')' in numeric_value:
+                                    numeric_value = '-' + numeric_value.strip('()')
+                                cell.value = float(numeric_value)
+                            else:
+                                cell.value = cell_value
+                        except (ValueError, AttributeError):
+                            cell.value = cell_value
+        
+        if total_placeholders_found > 0:
+            _log.info(f"Replaced {total_placeholders_replaced} of {total_placeholders_found} placeholders")
+            return True
+        
+        return False
+    
+    def _generate_from_json_template_old(self, json_data: Dict, output_path: Path, template_json_path: Path) -> bool:
+        """
+        Generate Excel from JSON template specification.
+        
+        Template format:
+        {
+          "columns": [{"period": "30.06.2025", "label": "Q1 FY2026"}, ...],
+          "rows": [{"label": "Sale of goods", "key": "sale_of_goods", "type": "data"}, ...]
+        }
+        
+        Args:
+            json_data: Financial data with company_name and financial_data
+            output_path: Path to save Excel file
+            template_json_path: Path to JSON template file
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            _log.info(f"Generating Excel from JSON template: {template_json_path}")
+            
+            # Load template
+            with open(template_json_path, 'r', encoding='utf-8') as f:
+                template = json.load(f)
+            
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = template.get('template_name', 'Financial Statement')
+            
+            # Get template configuration
+            columns = template.get('columns', [])
+            rows_spec = template.get('rows', [])
+            layout = template.get('layout', {})
+            formatting = template.get('formatting', {})
+            
+            # Title row
+            title_row = layout.get('title_row', 1)
+            ws.merge_cells(f'A{title_row}:' + get_column_letter(len(columns) + 1) + str(title_row))
+            title_cell = ws[f'A{title_row}']
+            title_cell.value = self.company_name
+            title_cell.font = Font(bold=True, size=16)
+            title_cell.alignment = Alignment(horizontal='center', vertical='center')
+            title_cell.fill = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid')
+            
+            # Period header row
+            period_row = layout.get('period_header_row', 2)
+            ws[f'A{period_row}'] = 'INR Crs'
+            ws[f'A{period_row}'].font = Font(bold=True)
+            
+            # Column headers (periods)
+            for col_idx, col_spec in enumerate(columns, start=2):  # Start from column B
+                col_letter = get_column_letter(col_idx)
+                header_cell = ws[f'{col_letter}{period_row}']
+                header_cell.value = col_spec.get('label', col_spec.get('period'))
+                header_cell.font = Font(bold=True)
+                header_cell.alignment = Alignment(horizontal='center')
+                header_cell.fill = PatternFill(start_color='D9E1F2', end_color='D9E1F2', fill_type='solid')
+                
+                # Set column width
+                ws.column_dimensions[col_letter].width = 15
+            
+            # Set Column A width
+            ws.column_dimensions['A'].width = 60
+            
+            # Data rows
+            data_start_row = layout.get('data_start_row', 3)
+            current_row = data_start_row
+            
+            for row_spec in rows_spec:
+                row_type = row_spec.get('type', 'data')
+                label = row_spec.get('label', '')
+                key = row_spec.get('key')
+                
+                # Set label in column A
+                label_cell = ws[f'A{current_row}']
+                label_cell.value = label
+                
+                # Apply formatting based on type
+                if row_type == 'section_header':
+                    fmt = formatting.get('section_header', {})
+                    if fmt.get('bold', False):
+                        label_cell.font = Font(bold=True)
+                    if 'background_color' in fmt:
+                        label_cell.fill = PatternFill(start_color=fmt['background_color'], 
+                                                      end_color=fmt['background_color'], fill_type='solid')
+                elif row_type == 'total':
+                    fmt = formatting.get('total', {})
+                    if fmt.get('bold', True):
+                        label_cell.font = Font(bold=True)
+                elif row_type == 'metric':
+                    fmt = formatting.get('metric', {})
+                    if fmt.get('italic', False):
+                        label_cell.font = Font(italic=True)
+                elif row_type == 'blank':
+                    current_row += 1
+                    continue
+                
+                # Fill data values if key is provided
+                if key and row_type in ['data', 'total']:
+                    for col_idx, col_spec in enumerate(columns, start=2):
+                        period = col_spec.get('period')
+                        col_letter = get_column_letter(col_idx)
+                        
+                        # Get value from data map
+                        value = self._get_value(key, period)
+                        
+                        data_cell = ws[f'{col_letter}{current_row}']
+                        if value != 0:
+                            data_cell.value = self._format_number(value)
+                        else:
+                            data_cell.value = '-'
+                        
+                        data_cell.alignment = Alignment(horizontal='right')
+                        
+                        # Apply total formatting
+                        if row_type == 'total':
+                            data_cell.font = Font(bold=True)
+                            data_cell.border = Border(bottom=Side(style='double'))
+                
+                # Apply borders
+                thin_border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+                for col_idx in range(1, len(columns) + 2):
+                    ws.cell(row=current_row, column=col_idx).border = thin_border
+                
+                current_row += 1
+            
+            # Save workbook
+            wb.save(str(output_path))
+            _log.info(f"Excel file generated from JSON template: {output_path}")
+            return True
+            
+        except Exception as e:
+            _log.error(f"Error generating Excel from JSON template: {str(e)}", exc_info=True)
             return False
     
     def generate_csv(self, json_data: Dict, output_path: Path) -> bool:

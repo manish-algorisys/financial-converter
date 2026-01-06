@@ -20,8 +20,13 @@ _log = logging.getLogger(__name__)
 class AIFinancialExtractor:
     """Extract financial data from parsed documents using OpenAI."""
     
-    # System prompt for financial data extraction
+    # System prompt for financial data extraction (template-aware)
     SYSTEM_PROMPT = """You are a financial data extraction specialist. Your task is to extract COMPLETE structured financial data from quarterly financial statements.
+
+The extracted data will be used to fill an Excel template where:
+- Column A contains particulars (metric names)
+- Row 1 contains periods (dates)
+- Data cells contain the values for each particular-period combination
 
 EXTRACT EVERY SINGLE ROW from the table with their values for ALL periods:
 

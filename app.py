@@ -2,6 +2,7 @@
 Flask API for Financial Document Parser Service
 """
 import os
+import json
 import logging
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file
@@ -10,6 +11,8 @@ from werkzeug.utils import secure_filename
 import tempfile
 import shutil
 from dotenv import load_dotenv
+from pypdf import PdfReader
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -76,6 +79,89 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def detect_company_name_from_pdf(pdf_path):
+    """
+    Detect company name from PDF file content.
+    
+    Args:
+        pdf_path: Path to PDF file
+    
+    Returns:
+        Detected company name or None if not found
+    """
+    try:
+        # Company name patterns for matching
+        company_patterns = {
+            'BRITANNIA': [r'britannia', r'britannia\s+industries'],
+            'COLGATE': [r'colgate', r'colgate-palmolive', r'colgate\s+palmolive'],
+            'DABUR': [r'dabur', r'dabur\s+india'],
+            'HUL': [r'hindustan\s+unilever', r'hul', r'unilever'],
+            'ITC': [r'\bitc\b', r'itc\s+limited', r'i\.t\.c'],
+            'NESTLE': [r'nestle', r'nestlé', r'nestle\s+india'],
+            'P&G': [r'procter\s+&\s+gamble', r'procter\s+and\s+gamble', r'p&g', r'p\s+&\s+g'],
+        }
+        
+        supported_companies = get_supported_companies()
+        
+        # Read PDF content
+        try:
+            reader = PdfReader(str(pdf_path))
+        except Exception as pdf_error:
+            _log.error(f"Cannot read PDF file (corrupted or invalid): {str(pdf_error)}")
+            return None
+        
+        # Extract text from first few pages
+        text = ""
+        for page_num in range(min(3, len(reader.pages))):
+            try:
+                text += reader.pages[page_num].extract_text() or ""
+            except Exception as page_error:
+                _log.warning(f"Error reading page {page_num + 1}: {str(page_error)}")
+                continue
+        
+        text_lower = text.lower()
+        
+        # Try to match company patterns
+        for company, patterns in company_patterns.items():
+            if company in supported_companies:
+                for pattern in patterns:
+                    if re.search(pattern, text_lower):
+                        _log.info(f"Auto-detected company: {company}")
+                        return company
+        
+        _log.warning("Could not auto-detect company name from PDF")
+        return None
+    except Exception as e:
+        _log.error(f"Error detecting company name: {str(e)}")
+        return None
+
+
+def scan_folder_for_pdfs(folder_path):
+    """
+    Scan folder for PDF files.
+    
+    Args:
+        folder_path: Path to folder
+    
+    Returns:
+        Dictionary with success status and list of PDF files
+    """
+    try:
+        folder = Path(folder_path)
+        if not folder.exists():
+            return {'success': False, 'error': f'Folder does not exist: {folder_path}'}
+        if not folder.is_dir():
+            return {'success': False, 'error': f'Path is not a directory: {folder_path}'}
+        
+        pdf_files = list(folder.glob('*.pdf'))
+        if not pdf_files:
+            return {'success': False, 'error': f'No PDF files found in: {folder_path}'}
+        
+        return {'success': True, 'files': pdf_files, 'count': len(pdf_files)}
+    except Exception as e:
+        return {'success': False, 'error': f'Error scanning folder: {str(e)}'}
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
@@ -106,11 +192,11 @@ def get_companies():
 @app.route('/api/parse', methods=['POST'])
 def parse_document():
     """
-    Parse financial document with optimized multi-format support.
+    Parse financial document with optimized multi-format support and auto-detection.
     
     Expected form data:
     - file: PDF file (required)
-    - company_name: Company name (required, e.g., "BRITANNIA", "COLGATE", etc.)
+    - company_name: Company name (optional - will auto-detect if not provided)
     - prefer_standalone: Prefer standalone over consolidated statements (optional, default: true)
     - use_fuzzy_matching: Enable fuzzy label matching fallback (optional, default: true)
     
@@ -121,6 +207,7 @@ def parse_document():
     - output_files: Generated file paths
     - processing_time: Processing duration
     - table_info: Table selection metadata (total_tables, selected_table, selection_method)
+    - detected_company: Auto-detected company name (if auto-detection was used)
     """
     try:
         # Check if config is loaded
@@ -138,27 +225,13 @@ def parse_document():
             }), 400
         
         file = request.files['file']
+        print(f"Received file: {file}")
         
         # Check if file is selected
         if file.filename == '':
             return jsonify({
                 'success': False,
                 'error': 'No file selected'
-            }), 400
-        
-        # Check if company name is provided
-        company_name = request.form.get('company_name', '').upper()
-        if not company_name:
-            return jsonify({
-                'success': False,
-                'error': 'Company name not provided'
-            }), 400
-        
-        # Validate company name
-        if company_name not in get_supported_companies():
-            return jsonify({
-                'success': False,
-                'error': f'Unsupported company: {company_name}. Supported: {get_supported_companies()}'
             }), 400
         
         # Check file extension
@@ -168,17 +241,47 @@ def parse_document():
                 'error': 'Invalid file type. Only PDF files are allowed.'
             }), 400
         
+        # Save uploaded file temporarily
+        filename = secure_filename(file.filename)
+        temp_dir = Path(tempfile.mkdtemp())
+        file_path = temp_dir / filename
+        print(f"Saving uploaded file to: {file_path}")
+        file.save(str(file_path))
+        
+        # Get or detect company name
+        company_name = request.form.get('company_name', '').upper()
+        detected_company = None
+        
+        if not company_name:
+            # Auto-detect company name
+            _log.info(f"No company name provided, attempting auto-detection for: {filename}")
+            detected_company = detect_company_name_from_pdf(file_path)
+            
+            if not detected_company:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not auto-detect company name. Please provide company_name parameter.'
+                }), 400
+            
+            company_name = detected_company
+            _log.info(f"Auto-detected company: {company_name}")
+        
+        # Validate company name
+        if company_name not in get_supported_companies():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported company: {company_name}. Supported: {get_supported_companies()}'
+            }), 400
+        
         # Get optional optimization parameters
         prefer_standalone = request.form.get('prefer_standalone', 'true').lower() == 'true'
         use_fuzzy_matching = request.form.get('use_fuzzy_matching', 'true').lower() == 'true'
         
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        temp_dir = Path(tempfile.mkdtemp())
-        file_path = temp_dir / filename
-        file.save(str(file_path))
-        
         _log.info(f"Processing file: {filename} for company: {company_name}")
+        if detected_company:
+            _log.info(f"Company auto-detected: {detected_company}")
         _log.info(f"Options: prefer_standalone={prefer_standalone}, use_fuzzy_matching={use_fuzzy_matching}")
         
         # Create output directory for this request
@@ -199,14 +302,20 @@ def parse_document():
         shutil.rmtree(temp_dir, ignore_errors=True)
         
         if result['success']:
-            return jsonify({
+            response_data = {
                 'success': True,
                 'message': result['message'],
                 'data': result['json_result'],
                 'output_files': result['output_files'],
                 'processing_time': result.get('processing_time'),
                 'table_info': result.get('table_info', {})
-            }), 200
+            }
+            
+            # Include detected company if auto-detection was used
+            if detected_company:
+                response_data['detected_company'] = detected_company
+            
+            return jsonify(response_data), 200
         else:
             return jsonify({
                 'success': False,
@@ -218,6 +327,283 @@ def parse_document():
         return jsonify({
             'success': False,
             'error': f'Internal server error: {str(e)}'
+        }), 500
+
+
+@app.route('/api/parse-batch', methods=['POST'])
+def parse_batch_documents():
+    """
+    Parse multiple PDF documents in batch with auto-detection.
+    
+    Expected form data:
+    - files[]: Multiple PDF files (required)
+    - prefer_standalone: Prefer standalone over consolidated statements (optional, default: true)
+    - use_fuzzy_matching: Enable fuzzy label matching fallback (optional, default: true)
+    
+    Returns:
+    - success: bool
+    - message: str
+    - results: Array of processing results for each file
+    - summary: Statistics (total, successful, failed)
+    """
+    try:
+        if config is None:
+            return jsonify({
+                'success': False,
+                'error': 'Configuration not loaded'
+            }), 500
+        
+        # Get all uploaded files
+        files = request.files.getlist('files[]')
+        
+        if not files or len(files) == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No files provided'
+            }), 400
+        
+        # Get optional parameters
+        prefer_standalone = request.form.get('prefer_standalone', 'true').lower() == 'true'
+        use_fuzzy_matching = request.form.get('use_fuzzy_matching', 'true').lower() == 'true'
+        
+        _log.info(f"Batch processing {len(files)} files")
+        
+        results = []
+        successful = 0
+        failed = 0
+        
+        for file in files:
+            if file.filename == '':
+                results.append({
+                    'filename': 'unknown',
+                    'success': False,
+                    'error': 'Empty filename'
+                })
+                failed += 1
+                continue
+            
+            if not allowed_file(file.filename):
+                results.append({
+                    'filename': file.filename,
+                    'success': False,
+                    'error': 'Invalid file type'
+                })
+                failed += 1
+                continue
+            
+            try:
+                # Save file temporarily
+                filename = secure_filename(file.filename)
+                temp_dir = Path(tempfile.mkdtemp())
+                file_path = temp_dir / filename
+                file.save(str(file_path))
+                
+                # Auto-detect company name
+                detected_company = detect_company_name_from_pdf(file_path)
+                
+                if not detected_company:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    results.append({
+                        'filename': filename,
+                        'success': False,
+                        'error': 'Could not auto-detect company name'
+                    })
+                    failed += 1
+                    continue
+                
+                # Create output directory
+                output_dir = OUTPUT_FOLDER / f"{detected_company}_{file_path.stem}"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Process document
+                result = process_pdf_document(
+                    pdf_path=file_path,
+                    company_name=detected_company,
+                    output_dir=output_dir,
+                    config=config,
+                    prefer_standalone=prefer_standalone,
+                    use_fuzzy_matching=use_fuzzy_matching
+                )
+                
+                # Clean up
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+                if result['success']:
+                    results.append({
+                        'filename': filename,
+                        'success': True,
+                        'detected_company': detected_company,
+                        'message': result['message'],
+                        'data': result['json_result'],
+                        'output_files': result['output_files'],
+                        'processing_time': result.get('processing_time'),
+                        'table_info': result.get('table_info', {})
+                    })
+                    successful += 1
+                else:
+                    results.append({
+                        'filename': filename,
+                        'success': False,
+                        'detected_company': detected_company,
+                        'error': result['message']
+                    })
+                    failed += 1
+                    
+            except Exception as e:
+                _log.error(f"Error processing {file.filename}: {str(e)}")
+                results.append({
+                    'filename': file.filename,
+                    'success': False,
+                    'error': str(e)
+                })
+                failed += 1
+        
+        return jsonify({
+            'success': True,
+            'message': f'Batch processing completed',
+            'results': results,
+            'summary': {
+                'total': len(files),
+                'successful': successful,
+                'failed': failed
+            }
+        }), 200
+        
+    except Exception as e:
+        _log.error(f"Error in batch processing: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Batch processing error: {str(e)}'
+        }), 500
+
+
+@app.route('/api/parse-folder', methods=['POST'])
+def parse_folder_documents():
+    """
+    Parse all PDF documents in a folder with auto-detection.
+    
+    Expected JSON body:
+    {
+        "folder_path": "/path/to/pdfs",
+        "prefer_standalone": true,
+        "use_fuzzy_matching": true
+    }
+    
+    Returns:
+    - success: bool
+    - message: str
+    - results: Array of processing results for each file
+    - summary: Statistics (total, successful, failed)
+    """
+    try:
+        if config is None:
+            return jsonify({
+                'success': False,
+                'error': 'Configuration not loaded'
+            }), 500
+        
+        data = request.get_json()
+        
+        if not data or 'folder_path' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'folder_path not provided'
+            }), 400
+        
+        folder_path = data.get('folder_path')
+        prefer_standalone = data.get('prefer_standalone', True)
+        use_fuzzy_matching = data.get('use_fuzzy_matching', True)
+        
+        # Scan folder for PDFs
+        scan_result = scan_folder_for_pdfs(folder_path)
+        
+        if not scan_result['success']:
+            return jsonify({
+                'success': False,
+                'error': scan_result['error']
+            }), 400
+        
+        pdf_files = scan_result['files']
+        _log.info(f"Found {len(pdf_files)} PDF files in folder: {folder_path}")
+        
+        results = []
+        successful = 0
+        failed = 0
+        
+        for pdf_path in pdf_files:
+            try:
+                # Auto-detect company name
+                detected_company = detect_company_name_from_pdf(pdf_path)
+                
+                if not detected_company:
+                    results.append({
+                        'filename': pdf_path.name,
+                        'success': False,
+                        'error': 'Could not auto-detect company name'
+                    })
+                    failed += 1
+                    continue
+                
+                # Create output directory
+                output_dir = OUTPUT_FOLDER / f"{detected_company}_{pdf_path.stem}"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Process document
+                result = process_pdf_document(
+                    pdf_path=pdf_path,
+                    company_name=detected_company,
+                    output_dir=output_dir,
+                    config=config,
+                    prefer_standalone=prefer_standalone,
+                    use_fuzzy_matching=use_fuzzy_matching
+                )
+                
+                if result['success']:
+                    results.append({
+                        'filename': pdf_path.name,
+                        'success': True,
+                        'detected_company': detected_company,
+                        'message': result['message'],
+                        'data': result['json_result'],
+                        'output_files': result['output_files'],
+                        'processing_time': result.get('processing_time'),
+                        'table_info': result.get('table_info', {})
+                    })
+                    successful += 1
+                else:
+                    results.append({
+                        'filename': pdf_path.name,
+                        'success': False,
+                        'detected_company': detected_company,
+                        'error': result['message']
+                    })
+                    failed += 1
+                    
+            except Exception as e:
+                _log.error(f"Error processing {pdf_path.name}: {str(e)}")
+                results.append({
+                    'filename': pdf_path.name,
+                    'success': False,
+                    'error': str(e)
+                })
+                failed += 1
+        
+        return jsonify({
+            'success': True,
+            'message': f'Folder processing completed',
+            'results': results,
+            'summary': {
+                'total': len(pdf_files),
+                'successful': successful,
+                'failed': failed
+            }
+        }), 200
+        
+    except Exception as e:
+        _log.error(f"Error in folder processing: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Folder processing error: {str(e)}'
         }), 500
 
 
@@ -548,18 +934,24 @@ def generate_excel_ai():
     """
     Generate Excel file using AI extraction from previously parsed results.
     
-    Expected JSON body:
-    {
-        "company_name": "BRITANNIA",
-        "document_name": "Britannia_Unaudited_Q2_June_2026",  // Output directory name
-        "preferred_format": "html",  // Optional: "html" or "markdown" (default: "html")
-        "save": false  // Optional: save to storage (default: false)
-    }
+    Expected request:
+    - JSON body OR multipart/form-data
+    - JSON fields:
+        {
+            "company_name": "BRITANNIA",
+            "document_name": "Britannia_Unaudited_Q2_June_2026",  // Output directory name
+            "preferred_format": "html",  // Optional: "html" or "markdown" (default: "html")
+            "save": false  // Optional: save to storage (default: false)
+        }
+    - Optional multipart field:
+        "template_excel": Excel template file with placeholders ({{key[period]}} format)
     
     Returns:
     - Excel file download OR
     - File ID if save=true
     """
+    template_temp_path = None
+    
     try:
         # Check if AI extractor is available
         if ai_extractor is None:
@@ -568,7 +960,33 @@ def generate_excel_ai():
                 'error': 'AI extraction not available. Please set OPENAI_API_KEY environment variable.'
             }), 503
         
-        data = request.get_json()
+        # Handle multipart (with template) or JSON request
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Extract data from form fields
+            company_name = request.form.get('company_name', '').upper()
+            document_name = request.form.get('document_name', '')
+            preferred_format = request.form.get('preferred_format', 'html').lower()
+            save_to_storage = request.form.get('save', 'false').lower() == 'true'
+            
+            data = {
+                'company_name': company_name,
+                'document_name': document_name,
+                'preferred_format': preferred_format,
+                'save': save_to_storage
+            }
+            
+            # Check for template Excel file
+            if 'template_excel' in request.files:
+                template_file = request.files['template_excel']
+                if template_file.filename:
+                    # Save template to temporary location
+                    temp_dir = Path(tempfile.mkdtemp())
+                    template_temp_path = temp_dir / secure_filename(template_file.filename)
+                    template_file.save(template_temp_path)
+                    _log.info(f"Template Excel uploaded: {template_file.filename}")
+        else:
+            # Standard JSON request
+            data = request.get_json()
         
         if not data:
             return jsonify({
@@ -633,10 +1051,20 @@ def generate_excel_ai():
         company_name_safe = company_name.replace(' ', '_')
         excel_file = temp_dir / f"{company_name_safe}_AI_financial_statement.xlsx"
         
-        success = generator.generate_excel(extracted_data, excel_file)
+        # Use template if provided, otherwise use fixed format
+        if template_temp_path:
+            _log.info(f"Using Excel template for Excel generation: {template_temp_path.name}")
+            success = generator.generate_excel(extracted_data, excel_file, template_excel_path=template_temp_path)
+            template_used = True
+        else:
+            success = generator.generate_excel(extracted_data, excel_file)
+            template_used = False
         
         if not success:
+            # Clean up temp files
             shutil.rmtree(temp_dir, ignore_errors=True)
+            if template_temp_path and template_temp_path.parent.exists():
+                shutil.rmtree(template_temp_path.parent, ignore_errors=True)
             return jsonify({
                 'success': False,
                 'error': 'Failed to generate Excel file from AI-extracted data'
@@ -649,13 +1077,17 @@ def generate_excel_ai():
             # Save to storage and return file ID
             file_id = file_manager.save_file(excel_file, company_name, 'excel')
             shutil.rmtree(temp_dir, ignore_errors=True)
+            # Clean up template temp file
+            if template_temp_path and template_temp_path.parent.exists():
+                shutil.rmtree(template_temp_path.parent, ignore_errors=True)
             
             return jsonify({
                 'success': True,
                 'message': 'Excel file generated using AI and saved',
                 'file_id': file_id,
                 'download_url': f'/api/download-generated/{file_id}',
-                'metadata': extracted_data.get('metadata', {})
+                'metadata': extracted_data.get('metadata', {}),
+                'used_template': template_used
             }), 200
         else:
             # Return file directly
@@ -667,11 +1099,18 @@ def generate_excel_ai():
                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 )
             finally:
-                # Clean up temp file after sending
+                # Clean up temp files after sending
                 import atexit
-                atexit.register(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+                def cleanup():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    if template_temp_path and template_temp_path.parent.exists():
+                        shutil.rmtree(template_temp_path.parent, ignore_errors=True)
+                atexit.register(cleanup)
         
     except Exception as e:
+        # Clean up on error
+        if template_temp_path and template_temp_path.parent.exists():
+            shutil.rmtree(template_temp_path.parent, ignore_errors=True)
         _log.error(f"Error generating AI Excel: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,

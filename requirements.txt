@@ -12,3 +12,5 @@ requests
 openpyxl
 openai
 python-dotenv
+fuzzywuzzy
+python-Levenshtein

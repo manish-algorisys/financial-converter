@@ -40,27 +40,35 @@ TARGET_HEADINGS_GENERIC = [
 
 def find_target_page(pdf_path: Path) -> int | None:
     """Return page index containing the Standalone (not Consolidated) Unaudited Q1/Q2 June 2025 results."""
-    reader = PdfReader(str(pdf_path))
+    try:
+        reader = PdfReader(str(pdf_path))
+    except Exception as e:
+        _log.warning(f"Could not read PDF for page detection: {str(e)}. Will process entire document.")
+        return None
 
     for page_index, page in enumerate(reader.pages):
-        text = page.extract_text() or ""
-        text_lower = text.lower()
+        try:
+            text = page.extract_text() or ""
+            text_lower = text.lower()
 
-        # First, try patterns that explicitly mention "standalone"
-        for pattern in TARGET_HEADINGS_WITH_STANDALONE:
-            if re.search(pattern, text_lower):
-                _log.info(f"Page {page_index + 1}: Found STANDALONE financial results (explicit)")
-                return page_index
-
-        # If no explicit standalone, check generic patterns
-        # but ONLY if the page does NOT contain "consolidated"
-        if "consolidated" not in text_lower:
-            for pattern in TARGET_HEADINGS_GENERIC:
+            # First, try patterns that explicitly mention "standalone"
+            for pattern in TARGET_HEADINGS_WITH_STANDALONE:
                 if re.search(pattern, text_lower):
-                    _log.info(f"Page {page_index + 1}: Found financial results (no consolidated keyword, assuming standalone)")
+                    _log.info(f"Page {page_index + 1}: Found STANDALONE financial results (explicit)")
                     return page_index
-        else:
-            _log.info(f"Page {page_index + 1}: Skipping - contains 'consolidated' keyword")
+
+            # If no explicit standalone, check generic patterns
+            # but ONLY if the page does NOT contain "consolidated"
+            if "consolidated" not in text_lower:
+                for pattern in TARGET_HEADINGS_GENERIC:
+                    if re.search(pattern, text_lower):
+                        _log.info(f"Page {page_index + 1}: Found financial results (no consolidated keyword, assuming standalone)")
+                        return page_index
+            else:
+                _log.info(f"Page {page_index + 1}: Skipping - contains 'consolidated' keyword")
+        except Exception as e:
+            _log.warning(f"Error reading page {page_index + 1}: {str(e)}. Skipping page.")
+            continue
 
     return None
 
@@ -319,6 +327,7 @@ def process_pdf_document(pdf_path: Path, company_name: str, output_dir: Path, co
         
         # Find target page
         target_page = find_target_page(pdf_path)
+        print(f"Target page: {target_page}")
         
         page_range = None
         if target_page is not None:

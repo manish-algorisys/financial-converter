@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import pandas as pd
 from io import BytesIO
+from pypdf import PdfReader
+import re
 
 # Configuration
 API_URL = "http://localhost:5000"
@@ -73,6 +75,10 @@ if 'csv_file_id' not in st.session_state:
     st.session_state.csv_file_id = None
 if 'generated_files' not in st.session_state:
     st.session_state.generated_files = []
+if 'batch_results' not in st.session_state:
+    st.session_state.batch_results = []
+if 'batch_mode' not in st.session_state:
+    st.session_state.batch_mode = False
 
 
 def check_api_health():
@@ -94,6 +100,89 @@ def get_supported_companies():
         return []
     except:
         return []
+
+
+def scan_folder_for_pdfs(folder_path):
+    """Scan folder for PDF files."""
+    try:
+        folder = Path(folder_path)
+        if not folder.exists():
+            return {'success': False, 'error': f'Folder does not exist: {folder_path}'}
+        if not folder.is_dir():
+            return {'success': False, 'error': f'Path is not a directory: {folder_path}'}
+        
+        pdf_files = list(folder.glob('*.pdf'))
+        if not pdf_files:
+            return {'success': False, 'error': f'No PDF files found in: {folder_path}'}
+        
+        return {'success': True, 'files': pdf_files, 'count': len(pdf_files)}
+    except Exception as e:
+        return {'success': False, 'error': f'Error scanning folder: {str(e)}'}
+
+
+def detect_company_name(pdf_file, supported_companies):
+    """
+    Detect company name from PDF file content.
+    
+    Args:
+        pdf_file: File object or Path to PDF file
+        supported_companies: List of supported company names
+    
+    Returns:
+        Detected company name or None if not found
+    """
+    try:
+        # Create company name variations for matching
+        company_patterns = {
+            'BRITANNIA': [r'britannia', r'britannia\s+industries'],
+            'COLGATE': [r'colgate', r'colgate-palmolive', r'colgate\s+palmolive'],
+            'DABUR': [r'dabur', r'dabur\s+india'],
+            'HUL': [r'hindustan\s+unilever', r'hul', r'unilever'],
+            'ITC': [r'\bitc\b', r'itc\s+limited', r'i\.t\.c'],
+            'NESTLE': [r'nestle', r'nestlé', r'nestle\s+india'],
+            'P&G': [r'procter\s+&\s+gamble', r'procter\s+and\s+gamble', r'p&g', r'p\s+&\s+g'],
+        }
+        
+        # Read PDF content
+        try:
+            if isinstance(pdf_file, Path):
+                reader = PdfReader(str(pdf_file))
+            else:
+                # File upload object
+                reader = PdfReader(pdf_file)
+        except Exception as pdf_error:
+            st.warning(f"Cannot read PDF (corrupted or invalid): {str(pdf_error)}")
+            return None
+        
+        # Extract text from first few pages (company name usually in header/title)
+        text = ""
+        for page_num in range(min(3, len(reader.pages))):
+            try:
+                text += reader.pages[page_num].extract_text() or ""
+            except Exception as page_error:
+                # Skip pages that cannot be read
+                continue
+        
+        # Reset file pointer for subsequent operations (important for uploaded files)
+        if hasattr(pdf_file, 'seek'):
+            try:
+                pdf_file.seek(0)
+            except Exception:
+                pass  # Some file objects may not support seek
+        
+        text_lower = text.lower()
+        
+        # Try to match company patterns
+        for company, patterns in company_patterns.items():
+            if company in supported_companies:
+                for pattern in patterns:
+                    if re.search(pattern, text_lower):
+                        return company
+        
+        return None
+    except Exception as e:
+        st.warning(f"Could not auto-detect company name: {str(e)}")
+        return None
 
 
 def parse_document(file, company_name, prefer_standalone=True, use_fuzzy_matching=True):
@@ -285,21 +374,41 @@ def list_generated_files(company_name=None):
         }
 
 
-def generate_excel_ai(company_name, document_name, preferred_format='html', save_to_storage=False):
+def generate_excel_ai(company_name, document_name, preferred_format='html', save_to_storage=False, template_excel_file=None):
     """Generate Excel using AI extraction from previously parsed results."""
     try:
-        payload = {
-            'company_name': company_name,
-            'document_name': document_name,
-            'preferred_format': preferred_format,
-            'save': save_to_storage
-        }
-        
-        response = requests.post(
-            f"{API_URL}/api/generate-excel-ai",
-            json=payload,
-            timeout=120  # Longer timeout for AI processing
-        )
+        if template_excel_file:
+            # Multipart request with Excel template
+            files = {
+                'template_excel': (template_excel_file.name, template_excel_file, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            }
+            form_data = {
+                'company_name': company_name,
+                'document_name': document_name,
+                'preferred_format': preferred_format,
+                'save': str(save_to_storage).lower()
+            }
+            
+            response = requests.post(
+                f"{API_URL}/api/generate-excel-ai",
+                files=files,
+                data=form_data,
+                timeout=120
+            )
+        else:
+            # Standard JSON request
+            payload = {
+                'company_name': company_name,
+                'document_name': document_name,
+                'preferred_format': preferred_format,
+                'save': save_to_storage
+            }
+            
+            response = requests.post(
+                f"{API_URL}/api/generate-excel-ai",
+                json=payload,
+                timeout=120  # Longer timeout for AI processing
+            )
         
         if response.status_code == 200:
             if save_to_storage:
@@ -332,7 +441,6 @@ def generate_excel_ai(company_name, document_name, preferred_format='html', save
             'success': False,
             'error': f'Error generating AI Excel: {str(e)}'
         }
-
 
 def display_financial_data(data):
     """Display financial data in a formatted table."""
@@ -514,11 +622,22 @@ def main():
         This tool extracts financial data from quarterly reports (PDF) 
         and converts them into structured JSON, Excel, and CSV formats.
         
-        **✨ v2.1 Features:**
+        **✨ v2.3 Features (NEW):**
+        - 📊 Column Mapping Templates
+        - 🎯 Auto-detect company name
+        - 🔤 Fuzzy metric matching
+        - 📋 No syntax required!
+        
+        **v2.2 Features:**
         - 📊 Professional Excel export
         - 📄 CSV generation
         - 🔢 Indian number formatting
         - 💾 File management
+        
+        **v2.1 Features:**
+        - 🤖 AI-powered extraction
+        - 📋 Custom Excel templates
+        - 🔄 Dual-mode filling
         
         **v2.0 Features:**
         - 🔄 Multi-format PDF support
@@ -563,7 +682,7 @@ def main():
     ])
     
     with tab1:
-        st.header("Upload Financial Document")
+        st.header("Upload Financial Document(s)")
         
         # Get supported companies
         companies = get_supported_companies()
@@ -572,22 +691,19 @@ def main():
             st.error("Unable to fetch supported companies from API.")
             return
         
-        # File upload
-        col1, col2 = st.columns([2, 1])
+        # Upload mode selection
+        upload_mode = st.radio(
+            "Select Upload Mode:",
+            options=["Single File", "Multiple Files", "Folder Path"],
+            horizontal=True,
+            help="Choose how you want to provide PDF files for parsing"
+        )
         
-        with col1:
-            uploaded_file = st.file_uploader(
-                "Choose a PDF file",
-                type=['pdf'],
-                help="Upload a quarterly financial report in PDF format"
-            )
-        
-        with col2:
-            company_name = st.selectbox(
-                "Select Company",
-                options=companies,
-                help="Select the company whose report you're uploading"
-            )
+        # Initialize company selection state
+        if 'detected_company' not in st.session_state:
+            st.session_state.detected_company = None
+        if 'manual_override' not in st.session_state:
+            st.session_state.manual_override = False
         
         # Advanced options in expander
         with st.expander("⚙️ Advanced Options (v2.0 Optimizations)"):
@@ -614,30 +730,209 @@ def main():
             - Both options are recommended for most cases
             """)
         
-        # Parse button
-        if uploaded_file is not None:
-            st.info(f"📄 **File:** {uploaded_file.name} ({uploaded_file.size / 1024:.2f} KB)")
+        # File input based on mode
+        uploaded_files = []
+        folder_path = None
+        
+        if upload_mode == "Single File":
+            uploaded_file = st.file_uploader(
+                "Choose a PDF file",
+                type=['pdf'],
+                help="Upload a quarterly financial report in PDF format"
+            )
+            if uploaded_file:
+                print(f"Uploaded file: {uploaded_file}")
+                uploaded_files = [uploaded_file]
+                
+                # Auto-detect company name
+                if not st.session_state.manual_override:
+                    detected = detect_company_name(uploaded_file, companies)
+                    if detected:
+                        st.session_state.detected_company = detected
+                        st.success(f"🔍 Auto-detected company: **{detected}**")
+                    else:
+                        st.warning("⚠️ Could not auto-detect company. Please select manually.")
+        
+        elif upload_mode == "Multiple Files":
+            uploaded_files_temp = st.file_uploader(
+                "Choose PDF files",
+                type=['pdf'],
+                accept_multiple_files=True,
+                help="Upload multiple quarterly financial reports in PDF format"
+            )
+            if uploaded_files_temp:
+                uploaded_files = uploaded_files_temp
+                st.info(f"📄 {len(uploaded_files)} files uploaded. Company names will be auto-detected for each file.")
+        
+        else:  # Folder Path
+            folder_path = st.text_input(
+                "Enter folder path containing PDF files:",
+                placeholder="e.g., D:/financial_reports/Q2_2025",
+                help="Provide absolute path to folder containing PDF files"
+            )
+        
+        # Manual company override option (only for single file mode)
+        if upload_mode == "Single File" and uploaded_files:
+            with st.expander("🔧 Manual Company Selection (Override Auto-detection)"):
+                manual_company = st.selectbox(
+                    "Select Company Manually",
+                    options=["Auto-detect"] + companies,
+                    index=0 if not st.session_state.manual_override else (companies.index(st.session_state.detected_company) + 1 if st.session_state.detected_company in companies else 0),
+                    help="Override auto-detection and manually select the company"
+                )
+                
+                if manual_company != "Auto-detect":
+                    st.session_state.detected_company = manual_company
+                    st.session_state.manual_override = True
+                else:
+                    st.session_state.manual_override = False
+        
+        # Process based on mode
+        if upload_mode == "Folder Path" and folder_path:
+            st.info(f"📁 **Folder:** {folder_path}")
             
             col1, col2, col3 = st.columns([1, 1, 2])
             with col1:
-                if st.button("🚀 Parse Document", type="primary", use_container_width=True):
-                    result = parse_document(
-                        uploaded_file, 
-                        company_name,
-                        prefer_standalone=prefer_standalone,
-                        use_fuzzy_matching=use_fuzzy_matching
-                    )
+                if st.button("🔍 Scan & Parse Folder", type="primary", use_container_width=True):
+                    # Scan folder
+                    scan_result = scan_folder_for_pdfs(folder_path)
                     
-                    if result.get('success'):
-                        st.session_state.parsed_data = result.get('data')
-                        st.session_state.output_files = result.get('output_files', {})
-                        st.session_state.processing_time = result.get('processing_time')
-                        st.session_state.table_info = result.get('table_info', {})
-                        # Store document name (without extension)
-                        st.session_state.document_name = Path(uploaded_file.name).stem
-                        st.rerun()
+                    if not scan_result['success']:
+                        st.error(f"❌ {scan_result['error']}")
                     else:
-                        st.error(f"❌ {result.get('error', 'Unknown error')}")
+                        pdf_files = scan_result['files']
+                        st.info(f"Found {scan_result['count']} PDF file(s)")
+                        
+                        # Process all PDFs
+                        st.session_state.batch_results = []
+                        st.session_state.batch_mode = True
+                        
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        for idx, pdf_path in enumerate(pdf_files):
+                            status_text.text(f"Processing {idx + 1}/{len(pdf_files)}: {pdf_path.name}")
+                            
+                            # Auto-detect company name for this PDF
+                            detected_company = detect_company_name(pdf_path, companies)
+                            
+                            if not detected_company:
+                                # Skip this file if company cannot be detected
+                                result = {
+                                    'success': False,
+                                    'error': 'Could not auto-detect company name',
+                                    'filename': pdf_path.name
+                                }
+                                st.session_state.batch_results.append(result)
+                                progress_bar.progress((idx + 1) / len(pdf_files))
+                                continue
+                            
+                            with open(pdf_path, 'rb') as f:
+                                result = parse_document(
+                                    f,
+                                    detected_company,
+                                    prefer_standalone=prefer_standalone,
+                                    use_fuzzy_matching=use_fuzzy_matching
+                                )
+                                
+                                result['filename'] = pdf_path.name
+                                result['detected_company'] = detected_company
+                                st.session_state.batch_results.append(result)
+                            
+                            progress_bar.progress((idx + 1) / len(pdf_files))
+                        
+                        status_text.text(f"✅ Completed processing {len(pdf_files)} files")
+                        st.rerun()
+            
+            with col2:
+                if st.button("🗑️ Clear", use_container_width=True):
+                    st.session_state.batch_results = []
+                    st.session_state.batch_mode = False
+                    st.session_state.parsed_data = None
+                    st.session_state.output_files = {}
+                    st.session_state.detected_company = None
+                    st.session_state.manual_override = False
+                    st.rerun()
+        
+        elif uploaded_files:
+            # Display file info
+            if len(uploaded_files) == 1:
+                st.info(f"📄 **File:** {uploaded_files[0].name} ({uploaded_files[0].size / 1024:.2f} KB)")
+            else:
+                total_size = sum(f.size for f in uploaded_files) / 1024
+                st.info(f"📄 **Files:** {len(uploaded_files)} PDFs ({total_size:.2f} KB total)")
+                with st.expander("View files"):
+                    for f in uploaded_files:
+                        st.text(f"• {f.name} ({f.size / 1024:.2f} KB)")
+            
+            col1, col2, col3 = st.columns([1, 1, 2])
+            with col1:
+                if st.button("🚀 Parse Document(s)", type="primary", use_container_width=True):
+                    if len(uploaded_files) == 1:
+                        # Single file mode - use detected or manually selected company
+                        company_to_use = st.session_state.detected_company
+                        
+                        result = parse_document(
+                            uploaded_files[0], 
+                            company_to_use,
+                            prefer_standalone=prefer_standalone,
+                            use_fuzzy_matching=use_fuzzy_matching
+                        )
+                        print(result, "--- result")
+                            
+                        if result.get('success'):
+                            st.session_state.parsed_data = result.get('data')
+                            st.session_state.output_files = result.get('output_files', {})
+                            st.session_state.processing_time = result.get('processing_time')
+                            st.session_state.table_info = result.get('table_info', {})
+                            st.session_state.document_name = Path(uploaded_files[0].name).stem
+                            st.session_state.batch_mode = False
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {result.get('error', 'Unknown error')}")
+                    else:
+                        # Batch mode - auto-detect company for each file
+                        st.session_state.batch_results = []
+                        st.session_state.batch_mode = True
+                        
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        
+                        for idx, uploaded_file in enumerate(uploaded_files):
+                            status_text.text(f"Processing {idx + 1}/{len(uploaded_files)}: {uploaded_file.name}")
+                            
+                            # Auto-detect company for this file
+                            detected_company = detect_company_name(uploaded_file, companies)
+                            print(detected_company, "---- detected_company")
+                            
+                            if not detected_company:
+                                # Skip this file if company cannot be detected
+                                result = {
+                                    'success': False,
+                                    'error': 'Could not auto-detect company name',
+                                    'filename': uploaded_file.name
+                                }
+                                st.session_state.batch_results.append(result)
+                                progress_bar.progress((idx + 1) / len(uploaded_files))
+                                continue
+
+                            print("Parsing document...", uploaded_file)
+                            
+                            result = parse_document(
+                                uploaded_file,
+                                detected_company,
+                                prefer_standalone=prefer_standalone,
+                                use_fuzzy_matching=use_fuzzy_matching
+                            )
+                            
+                            result['filename'] = uploaded_file.name
+                            result['detected_company'] = detected_company
+                            st.session_state.batch_results.append(result)
+                            
+                            progress_bar.progress((idx + 1) / len(uploaded_files))
+                        
+                        status_text.text(f"✅ Completed processing {len(uploaded_files)} files")
+                        st.rerun()
             
             with col2:
                 if st.button("🗑️ Clear", use_container_width=True):
@@ -646,10 +941,66 @@ def main():
                     st.session_state.table_info = {}
                     st.session_state.save_message = None
                     st.session_state.save_message_type = None
+                    st.session_state.batch_results = []
+                    st.session_state.batch_mode = False
+                    st.session_state.detected_company = None
+                    st.session_state.manual_override = False
                     st.rerun()
         
-        # Display results if available
-        if st.session_state.parsed_data:
+        # Display results
+        if st.session_state.batch_mode and st.session_state.batch_results:
+            st.divider()
+            st.success(f"✅ Processed {len(st.session_state.batch_results)} document(s)!")
+            
+            # Summary statistics
+            successful = sum(1 for r in st.session_state.batch_results if r.get('success'))
+            failed = len(st.session_state.batch_results) - successful
+            
+            col_sum1, col_sum2, col_sum3 = st.columns(3)
+            with col_sum1:
+                st.metric("Total Files", len(st.session_state.batch_results))
+            with col_sum2:
+                st.metric("Successful", successful)
+            with col_sum3:
+                st.metric("Failed", failed)
+            
+            # Display results for each file
+            st.subheader("Processing Results")
+            for idx, result in enumerate(st.session_state.batch_results, 1):
+                filename = result.get('filename', f'File {idx}')
+                detected_company = result.get('detected_company', 'Unknown')
+                print(f"result: => {result}")
+                
+                with st.expander(f"{'✅' if result.get('success') else '❌'} {filename} - {detected_company}", expanded=False):
+                    if result.get('success'):
+                        data = result.get('data', {})
+                        
+                        col_info1, col_info2, col_info3, col_info4 = st.columns(4)
+                        with col_info1:
+                            st.metric("Detected Company", detected_company)
+                        with col_info2:
+                            st.metric("Company", data.get('company_name', 'N/A'))
+                        with col_info3:
+                            st.metric("Items Extracted", len(data.get('financial_data', [])))
+                        with col_info4:
+                            st.metric("Processing Time", f"{result.get('processing_time', 0)[0]:.1f}s")
+                        
+                        # Show table info
+                        table_info = result.get('table_info', {})
+                        if table_info:
+                            st.info(f"""
+                            **Table Selection:** {table_info.get('total_tables', 0)} table(s) found, 
+                            selected table #{table_info.get('selected_table', 'N/A')} 
+                            using {table_info.get('selection_method', 'unknown')} method
+                            """)
+                        
+                        # Preview data
+                        if st.checkbox(f"Preview data - {filename}", key=f"preview_{idx}"):
+                            display_financial_data(data)
+                    else:
+                        st.error(f"Error: {result.get('error', 'Unknown error')}")
+        
+        elif st.session_state.parsed_data:
             st.divider()
             st.success("✅ Document parsed successfully!")
             
@@ -1055,6 +1406,90 @@ def main():
                 help="Save generated file for later download (otherwise downloads immediately)"
             )
         
+        # Excel Template Upload Section
+        with st.expander("📋 Custom Excel Template (v2.3 - NEW: Column Mapping)", expanded=False):
+            st.markdown("""
+            **✨ NEW: Two ways to customize your Excel output!**
+            
+            ### 📊 Method 1: Column Mapping (Recommended - No Syntax Required!)
+            
+            **Simple 3-row structure:**
+            ```
+            Row 1: [A1: empty] | [B1:E1: MERGED] COMPANY_NAME_PLACEHOLDER
+            Row 2: Metric      | 30.06.2025 Q    | 31.03.2025 Q    | 30.06.2024 Q    | 31.03.2025 Y
+            Row 3: Sale of Goods
+            Row 4: Export Sales
+            Row 5: Net Profit
+            ...
+            ```
+            
+            **Features:**
+            - ✅ No placeholder syntax needed!
+            - ✅ Company name auto-filled in merged B1:E1 cells
+            - ✅ Headers detected automatically from Row 2
+            - ✅ Fuzzy matching for metric names (typo-tolerant)
+            - ✅ Professional financial report format
+            
+            **Supported Period Formats (Row 2 Headers):**
+            - `30.06.2025 Q` - Quarterly with date and Q suffix
+            - `31.03.2025 Y` - Yearly with date and Y suffix
+            - `Q1 FY2026`, `Q2 2025` - Quarter labels
+            - `FY 2025`, `Year 2025` - Year labels
+            
+            **Supported Metric Names (Column A from Row 3):**
+            Sale of Goods, Export Sales, Revenue from Operations, Other Income, Total Income,
+            Cost of Materials Consumed, Employee Benefits Expense, Finance Costs, 
+            Depreciation and Amortisation, Other Expenses, Total Expenses,
+            Profit Before Tax, Net Profit, EPS Basic, EPS Diluted, etc.
+            
+            ---
+            
+            ### 🔧 Method 2: Placeholder Mode (Advanced - Legacy)
+            
+            Use `{{key[period]}}` syntax for flexible placement anywhere in your template.
+            
+            **Placeholder Examples:**
+            - `{{company_name}}` - Company name
+            - `{{revenue_from_operations[30.06.2025]}}` - Revenue for Q1 FY2026
+            - `{{net_profit[31.03.2025_Y]}}` - Net profit for FY2025
+            - `{{eps_basic[30.06.2024]}}` - EPS for Q1 FY2025
+            
+            ---
+            
+            **System Behavior:**
+            1. ✅ Tries Column Mapping first (if Row 2 has period headers)
+            2. ✅ Falls back to Placeholder mode (if `{{}}` placeholders found)
+            3. ⚠️ Returns template unchanged if neither detected
+            
+            **Sample Template:** `templates/financial_summary_template_column_mapping.xlsx`
+            
+            📖 **Full Documentation:** See `COLUMN_MAPPING_GUIDE.md` for detailed instructions
+            """)
+            
+            template_excel_file = st.file_uploader(
+                "Upload Excel Template",
+                type=['xlsx', 'xls'],
+                help="Upload Excel template (supports Column Mapping or Placeholder modes)",
+                key="ai_excel_template_uploader"
+            )
+            
+            if template_excel_file:
+                st.success(f"✅ Template uploaded: {template_excel_file.name}")
+                st.info("💡 System will automatically detect structure (Column Mapping or Placeholder mode) and fill data accordingly.")
+                
+                # Provide helpful hints
+                col_hint1, col_hint2 = st.columns(2)
+                with col_hint1:
+                    st.caption("**Column Mapping Format:**")
+                    st.code("Row 1: Company Name (merged)\nRow 2: Headers\nRow 3+: Metrics", language="text")
+                with col_hint2:
+                    st.caption("**Placeholder Format:**")
+                    st.code("{{key[period]}}\nAnywhere in template", language="text")
+                
+                template_excel_file.seek(0)  # Reset for later use
+            else:
+                st.info("💡 Without a template, the default 47-row format will be used")
+        
         # Generate button
         if ai_company_name and ai_document_name:
             st.divider()
@@ -1080,11 +1515,15 @@ def main():
             
             if st.button("🚀 Generate Excel with AI", type="primary", use_container_width=True):
                 with st.spinner('🤖 AI is extracting financial data... This may take 30-60 seconds.'):
+                    # Get template file if provided
+                    template_file = st.session_state.get('ai_excel_template_uploader')
+                    
                     result = generate_excel_ai(
                         ai_company_name, 
                         ai_document_name,
                         preferred_format=preferred_format,
-                        save_to_storage=save_to_storage
+                        save_to_storage=save_to_storage,
+                        template_excel_file=template_file
                     )
                 
                 if result.get('success'):
