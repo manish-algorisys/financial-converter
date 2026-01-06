@@ -1187,7 +1187,13 @@ def generate_excel_ai_consolidated():
             source_format = 'html' if preferred_format == 'html' else 'markdown'
             
             try:
-                extracted_data = extractor.extract_from_output_dir(output_dir, company_name, source_format)
+                # Pass template to extractor for guided extraction
+                extracted_data = extractor.extract_from_output_dir(
+                    output_dir, 
+                    company_name, 
+                    source_format,
+                    template_excel_path=template_temp_path  # NEW: Template-guided extraction
+                )
                 
                 if extracted_data and isinstance(extracted_data, dict):
                     _log.info(f"Extracted data for {company_name}/{document_name}")
