@@ -33,6 +33,8 @@ class AIFinancialExtractor:
       "key": "sale_of_goods",
       "values": {{
         "30.06.2025": "4,357.64",
+        "30.06.2024": "3,892.15",
+        "31.03.2025": "15,678.90",
         "31.03.2025_Y": "16,859.22"
       }}
     }}
@@ -63,13 +65,32 @@ Other:
 • other_comprehensive_income, total_comprehensive_income
 • paid_up_equity_share_capital, other_equity, eps_basic, eps_diluted
 
-**EXTRACTION RULES:**
-1. Date Format: DD.MM.YYYY (e.g., "30.06.2025")
-2. Yearly Periods: Append "_Y" (e.g., "31.03.2025_Y" for FY2025)
-3. Numbers: Keep commas - "4,357.64" not "4357.64"
-4. Negatives: Brackets "(123.45)" or minus "-123.45"
-5. Missing Values: Use empty string ""
-6. Extract ALL rows and ALL periods - no skipping
+**PERIOD KEY FORMAT - CRITICAL:**
+Period keys in "values" object MUST be in DD.MM.YYYY format. DO NOT use table header text!
+
+✗ WRONG (table header text):
+  "Quarter Ended (Unaudited)": "1,42,064"
+  "Quarter Ended March 31,2025 (Audited)": "1,45,202"
+  "Year Ended March 31,2025 (Audited)": "5,99,920"
+
+✓ CORRECT (extracted dates):
+  "30.06.2025": "1,42,064"      ← Quarterly (Q1 FY2026)
+  "31.03.2025": "1,45,202"      ← Quarterly (Q4 FY2025)
+  "30.06.2024": "1,48,576"      ← Quarterly (Q1 FY2025)
+  "31.03.2025_Y": "5,99,920"    ← Yearly (FY2025) - note "_Y" suffix
+
+**HOW TO EXTRACT DATES:**
+- "Quarter Ended June 30, 2025" → "30.06.2025"
+- "Quarter Ended March 31, 2025" → "31.03.2025"
+- "Year Ended March 31, 2025" → "31.03.2025_Y" (add "_Y" for yearly)
+- "Q1 FY2026" → "30.06.2025" (Q1 = Jun 30)
+- "FY 2025" → "31.03.2025_Y" (fiscal year ends Mar 31)
+
+**OTHER EXTRACTION RULES:**
+1. Numbers: Keep commas - "4,357.64" not "4357.64"
+2. Negatives: Brackets "(123.45)" or minus "-123.45"
+3. Missing Values: Use empty string ""
+4. Extract ALL rows and ALL periods - no skipping
 
 **CRITICAL:** Return ONLY valid JSON. No explanatory text."""
 
@@ -121,14 +142,29 @@ REQUIRED METRICS:
   4. Abbreviation match (singular/plural)
   5. Semantic similarity (>75%)
 
-**EXTRACTION RULES:**
-1. Date Format: DD.MM.YYYY (e.g., "30.06.2025")
-2. Yearly Periods: Append "_Y" (e.g., "31.03.2025_Y")
-3. Numbers: Keep commas - "4,357.64" not "4357.64"
-4. Negatives: Brackets "(123.45)" or minus "-123.45"
-5. Missing Values: Use empty string ""
-6. Extract ALL periods found in table header - minimum 3-4 periods
-7. If metric in template but not in table → include with empty values {{}}
+**PERIOD KEY FORMAT - CRITICAL:**
+Period keys in "values" object MUST be in DD.MM.YYYY format. DO NOT use table header text!
+
+✗ WRONG (table header text):
+  {{"Quarter Ended (Unaudited)": "1,42,064"}}
+  {{"Quarter Ended March 31,2025 (Audited)": "1,45,202"}}
+
+✓ CORRECT (extracted dates):
+  {{"30.06.2025": "1,42,064", "31.03.2025": "1,45,202", "31.03.2025_Y": "5,99,920"}}
+
+**HOW TO EXTRACT DATES FROM HEADERS:**
+- "Quarter Ended June 30, 2025 (Unaudited)" → "30.06.2025"
+- "Quarter Ended March 31, 2025 (Audited)" → "31.03.2025" 
+- "Year Ended March 31, 2025" → "31.03.2025_Y" (add "_Y" for yearly!)
+- "Q1 FY2026" → "30.06.2025"
+- "FY 2025" → "31.03.2025_Y"
+
+**OTHER EXTRACTION RULES:**
+1. Numbers: Keep commas - "4,357.64" not "4357.64"
+2. Negatives: Brackets "(123.45)" or minus "-123.45"
+3. Missing Values: Use empty string ""
+4. Extract ALL periods found in table header - minimum 3-4 periods
+5. If metric in template but not in table → include with empty values {{}}
 
 **CRITICAL:** Return ONLY valid JSON. No explanatory text."""
 
@@ -386,7 +422,6 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             
             # Parse and validate JSON
             data = json.loads(json_str)
-            print(f"Extracted data for {company_name}: {data}") #DEBUG print
             
             # Validate structure
             if 'financial_data' not in data:

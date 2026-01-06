@@ -94,7 +94,9 @@ class FinancialExcelGenerator:
     
     def _build_data_map(self, financial_data: List[Dict]) -> None:
         """Build data map from financial_data array for easy lookup."""
-        self.data_map = {}
+        self.data_map = {}  # Clear previous data
+        
+        _log.info(f"Building data map from {len(financial_data)} items")
         
         for item in financial_data:
             key = self._normalize_key(item.get('key', ''))
@@ -104,11 +106,18 @@ class FinancialExcelGenerator:
             if key:
                 self.data_map[key] = values
                 _log.debug(f"Mapped key '{key}' with {len(values)} periods: {list(values.keys())}")
+            else:
+                _log.warning(f"Item missing key: {item.get('particular', 'Unknown')}")
+        
+        _log.info(f"Data map built with {len(self.data_map)} keys: {list(self.data_map.keys())}")
     
     def _get_value(self, key: str, period: str) -> float:
-        """Get numeric value for a key and period."""
+        """Get numeric value for a key and period using exact match + fuzzy fallback."""
+        from fuzzywuzzy import fuzz
+        
         normalized_key = self._normalize_key(key)
         
+        # Strategy 1: Exact match
         if normalized_key in self.data_map:
             values = self.data_map[normalized_key]
             value = values.get(period, '')
@@ -118,7 +127,42 @@ class FinancialExcelGenerator:
                 return float(value)
             
             # Otherwise parse it as a string
-            return self._parse_number(value)
+            parsed_value = self._parse_number(value)
+            if parsed_value == 0 and value:
+                _log.debug(f"Parsed value for key='{normalized_key}', period='{period}': '{value}' → {parsed_value}")
+            return parsed_value
+        
+        # Strategy 2: Fuzzy match on available keys
+        if self.data_map:
+            best_match_key = None
+            best_score = 0
+            
+            for data_key in self.data_map.keys():
+                # Try multiple fuzzy algorithms
+                ratio_score = fuzz.ratio(normalized_key, data_key)
+                partial_score = fuzz.partial_ratio(normalized_key, data_key)
+                token_sort_score = fuzz.token_sort_ratio(normalized_key, data_key)
+                
+                max_score = max(ratio_score, partial_score, token_sort_score)
+                
+                if max_score > best_score:
+                    best_score = max_score
+                    best_match_key = data_key
+            
+            # Use fuzzy match if score is high enough
+            if best_score >= 85:  # 85% similarity threshold
+                _log.debug(f"✓ Fuzzy matched key '{normalized_key}' → '{best_match_key}' (score: {best_score}%)")
+                values = self.data_map[best_match_key]
+                value = values.get(period, '')
+                
+                if isinstance(value, (int, float)):
+                    return float(value)
+                
+                return self._parse_number(value)
+            else:
+                _log.debug(f"✗ No fuzzy match for key '{normalized_key}' (best: '{best_match_key}' score: {best_score}%)")
+        else:
+            _log.debug(f"Key '{normalized_key}' not found - data_map is empty!")
         
         return 0.0
     
@@ -731,7 +775,14 @@ class FinancialExcelGenerator:
             _log.debug(f"✓ Cleaned exact match: '{metric_name}' → key '{metric_map[cleaned_metric]}'")
             return metric_map[cleaned_metric]
         
-        # Strategy 3: Partial string matching (contains)
+        # Strategy 3: Partial string matching (contains or starts with)
+        # First try startswith for long metric names
+        for display_name, key in metric_map.items():
+            if cleaned_metric.startswith(display_name) or metric_name_lower.startswith(display_name):
+                _log.debug(f"✓ Starts with match: '{metric_name}' starts with '{display_name}' → key '{key}'")
+                return key
+        
+        # Then try contains
         for display_name, key in metric_map.items():
             if display_name in cleaned_metric or cleaned_metric in display_name:
                 _log.debug(f"✓ Partial match: '{metric_name}' contains/in '{display_name}' → key '{key}'")
@@ -1132,8 +1183,19 @@ class FinancialExcelGenerator:
             # Set column A width
             ws.column_dimensions['A'].width = 60
             
-            # Get standard metrics list (from first company or use default)
-            standard_metrics = self._get_standard_metrics()
+            # Get metrics list - from template if available, otherwise use standard
+            if template_excel_path and template_excel_path.exists():
+                # Try to read metrics from template first
+                template_metrics = self._read_metrics_from_template(ws)
+                if template_metrics:
+                    _log.info(f"Using {len(template_metrics)} metrics from template")
+                    standard_metrics = template_metrics
+                else:
+                    _log.warning("Failed to read metrics from template, using standard metrics")
+                    standard_metrics = self._get_standard_metrics()
+            else:
+                _log.info("No template provided, using standard metrics")
+                standard_metrics = self._get_standard_metrics()
             
             # Extract periods from template Excel if provided, otherwise from data
             all_periods = []
@@ -1250,8 +1312,13 @@ class FinancialExcelGenerator:
                 current_col = 2
                 
                 for company_idx, company_data in enumerate(companies_data):
+                    company_name = company_data.get('company_name', f'Company {company_idx + 1}')
+                    
                     # Build data map for this company
-                    self._build_data_map(company_data.get('financial_data', []))
+                    financial_data = company_data.get('financial_data', [])
+                    _log.info(f"Processing company {company_idx + 1}/{len(companies_data)}: {company_name} with {len(financial_data)} financial items")
+                    _log.info(f"financial_data sample: {financial_data}")  # Log first 2 items for brevity
+                    self._build_data_map(financial_data)
                     
                     # Fill period values for this company
                     for period_idx, period in enumerate(periods_to_show):
@@ -1259,7 +1326,9 @@ class FinancialExcelGenerator:
                         cell = ws[f'{col_letter}{row_idx}']
                         
                         # Get value from data map
+                        _log.info(f"Fetching value for {company_name}, Metric: {metric_key}, Period: {period}")
                         value = self._get_value(metric_key, period)
+                        _log.info(f"Result for {company_name}, {metric_key}, {period}: {value}")
                         
                         if value and value != 0:
                             # Handle numeric values
@@ -1296,8 +1365,82 @@ class FinancialExcelGenerator:
             _log.error(f"Error generating consolidated Excel: {e}", exc_info=True)
             return False
     
+    def _read_metrics_from_template(self, ws) -> List[Dict]:
+        """
+        Read metrics from Excel template (Column A, starting from row 3).
+        
+        Args:
+            ws: Worksheet object
+        
+        Returns:
+            List of metric dicts with 'name', 'key', and 'is_bold'
+        """
+        metrics = []
+        
+        try:
+            # Start from row 3 (rows 1-2 are usually company name and period headers)
+            for row_idx in range(3, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=1)  # Column A
+                if cell.value:
+                    metric_name = str(cell.value).strip()
+                    # Skip empty cells and very short text (likely section headers)
+                    if metric_name and len(metric_name) > 2:
+                        # Infer key from metric name
+                        key = self._infer_key_from_metric(metric_name)
+                        
+                        # Check if cell is bold
+                        is_bold = False
+                        if cell.font and cell.font.bold:
+                            is_bold = True
+                        
+                        metrics.append({
+                            'name': metric_name,
+                            'key': key,
+                            'is_bold': is_bold
+                        })
+            
+            _log.info(f"Read {len(metrics)} metrics from template Column A")
+            return metrics
+            
+        except Exception as e:
+            _log.warning(f"Failed to read metrics from template: {str(e)}")
+            return []
+    
+    def _infer_key_from_metric(self, metric_name: str) -> str:
+        """
+        Infer standardized key from metric display name.
+        
+        Args:
+            metric_name: Display name like "Sale of Goods"
+        
+        Returns:
+            Inferred key like "sale_of_goods"
+        """
+        # Convert to lowercase and replace spaces with underscores
+        key = metric_name.lower().strip()
+        
+        # Remove common punctuation
+        key = key.replace('(', '').replace(')', '').replace(',', '')
+        key = key.replace('&', 'and').replace('-', '_')
+        key = key.replace('/', '_').replace('.', '')
+        
+        # Replace multiple spaces with single underscore
+        key = '_'.join(key.split())
+        
+        # Remove leading/trailing underscores
+        key = key.strip('_')
+        
+        # Use metric matching to find best matching standard key
+        metric_map = self._create_metric_key_map()
+        matched_key = self._match_metric_to_key(metric_name, metric_map)
+        
+        if matched_key:
+            return matched_key
+        
+        return key
+    
     def _get_standard_metrics(self) -> List[Dict]:
-        """Get standard list of financial metrics."""
+        """Get standard list of financial metrics (fallback when no template)."""
         return [
             {'name': 'Sale of goods / Income from operations Domestic', 'key': 'sale_of_goods', 'is_bold': False},
             {'name': 'Sale Exports', 'key': 'export_sales', 'is_bold': False},
