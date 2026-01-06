@@ -1595,28 +1595,38 @@ def main():
                             st.metric("Total Tokens", metadata.get('total_tokens_used', 'N/A'))
                         with col_meta3:
                             st.metric("Documents", len(selected_docs))
-                    
-                    file_content = result.get('file_content')
-                    filename = result.get('filename', 'financial_statement_consolidated.xlsx')
 
                     if save_to_storage:
                         # Show file ID and download link
                         file_id = result.get('file_id')
-                        st.info(f"📁 File saved with ID: `{file_id}`")
+                        st.success(f"✅ File has been saved to storage!")
+                        st.info(f"📁 **File ID:** `{file_id}`")
                         st.markdown(f"**Download URL:** {result.get('download_url')}")
-                        
-                        # Download button
-                        st.download_button(
-                            label="📥 Download Excel File",
-                            data=file_content,
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
 
-                        st.balloons()
+                        # load file for download button
+                        try:
+                            download_response = requests.get(result.get('download_url'), timeout=10)
+                            if download_response.status_code == 200:
+                                file_content = download_response.content
+                                filename = f"consolidated_financial_statement_{file_id[:8]}.xlsx"
+
+                                st.download_button(
+                                    label="📥 Download Excel File",
+                                    data=file_content,
+                                    file_name=filename,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                                st.balloons()
+                            else:
+                                st.info("ℹ️ File is saved but cannot be downloaded right now. Navigate to 'Saved Files' tab to access it later.")
+                        except Exception as e:
+                            st.info(f"ℹ️ Download error: {str(e)}")                        
                     else:
                         # Provide download
+                        file_content = result.get('file_content')
+                        filename = result.get('filename', 'financial_statement_consolidated.xlsx')
+
                         st.download_button(
                             label="📥 Download Excel File",
                             data=file_content,
