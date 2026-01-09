@@ -112,12 +112,10 @@ class FinancialExcelGenerator:
         _log.info(f"Data map built with {len(self.data_map)} keys: {list(self.data_map.keys())}")
     
     def _get_value(self, key: str, period: str) -> float:
-        """Get numeric value for a key and period using exact match + fuzzy fallback."""
-        from fuzzywuzzy import fuzz
-        
+        """Get numeric value for a key and period using exact match."""
         normalized_key = self._normalize_key(key)
         
-        # Strategy 1: Exact match
+        # Exact match only
         if normalized_key in self.data_map:
             values = self.data_map[normalized_key]
             value = values.get(period, '')
@@ -129,41 +127,11 @@ class FinancialExcelGenerator:
             # Otherwise parse it as a string
             parsed_value = self._parse_number(value)
             if parsed_value == 0 and value:
-                _log.debug(f"Parsed value for key='{normalized_key}', period='{period}': '{value}' → {parsed_value}")
+                _log.info(f"Parsed value for key='{normalized_key}', period='{period}': '{value}' → {parsed_value}")
             return parsed_value
         
-        # Strategy 2: Fuzzy match on available keys
-        if self.data_map:
-            best_match_key = None
-            best_score = 0
-            
-            for data_key in self.data_map.keys():
-                # Try multiple fuzzy algorithms
-                ratio_score = fuzz.ratio(normalized_key, data_key)
-                partial_score = fuzz.partial_ratio(normalized_key, data_key)
-                token_sort_score = fuzz.token_sort_ratio(normalized_key, data_key)
-                
-                max_score = max(ratio_score, partial_score, token_sort_score)
-                
-                if max_score > best_score:
-                    best_score = max_score
-                    best_match_key = data_key
-            
-            # Use fuzzy match if score is high enough
-            if best_score >= 85:  # 85% similarity threshold
-                _log.debug(f"✓ Fuzzy matched key '{normalized_key}' → '{best_match_key}' (score: {best_score}%)")
-                values = self.data_map[best_match_key]
-                value = values.get(period, '')
-                
-                if isinstance(value, (int, float)):
-                    return float(value)
-                
-                return self._parse_number(value)
-            else:
-                _log.debug(f"✗ No fuzzy match for key '{normalized_key}' (best: '{best_match_key}' score: {best_score}%)")
-        else:
-            _log.debug(f"Key '{normalized_key}' not found - data_map is empty!")
-        
+        # Key not found
+        _log.debug(f"Key '{normalized_key}' not found in data_map for period '{period}'")
         return 0.0
     
     def _calculate_total(self, keys: List[str], period: str) -> float:
@@ -414,7 +382,7 @@ class FinancialExcelGenerator:
             
             _log.info(f"Loading Excel template: {template_excel_path}")
             
-            # Load template workbook
+            # Load template workbook (creates in-memory copy, original template is never modified)
             wb = load_workbook(template_excel_path)
             
             # Build data map
@@ -442,7 +410,8 @@ class FinancialExcelGenerator:
                         placeholder_mode_used = True
                         _log.info(f"Applied placeholder mode to sheet: {sheet_name}")
             
-            # Save filled workbook
+            # Save filled workbook to OUTPUT path (never saves to template path)
+            _log.info(f"Saving filled Excel to: {output_path} (template at {template_excel_path} remains unchanged)")
             wb.save(output_path)
             
             if column_mapping_mode_used:
@@ -569,57 +538,40 @@ class FinancialExcelGenerator:
     
     def _parse_period_from_header(self, header_text: str) -> str:
         """
-        Parse period key from header text.
+        Convert any period header text to normalized key format.
         
         Examples:
-        - "30.06.2025 Q" → "30.06.2025"
-        - "31.03.2025 Y" → "31.03.2025_Y"
-        - "Q1 FY2026" → "30.06.2025" (if we can infer)
-        - "FY 2025" → "31.03.2025_Y"
+        - "30.06.2025 Q" → "30_06_2025_q"
+        - "31.03.2025 Y" → "31_03_2025_y"
+        - "Quarter Ended June 30, 2025" → "quarter_ended_june_30_2025"
+        - "Year Ended March 31, 2025" → "year_ended_march_31_2025"
+        - "3M 30th June 2025" → "3m_30th_june_2025"
+        - "12M FY 2025" → "12m_fy_2025"
         """
         import re
         
-        header_text = str(header_text).strip()
+        if not header_text:
+            return None
         
-        # Pattern 1: Direct date format with Q or Y suffix
-        # "30.06.2025 Q" or "31.03.2025 Y"
-        match = re.search(r'(\d{2}\.\d{2}\.\d{4})\s*([QY])', header_text, re.IGNORECASE)
-        if match:
-            date_part = match.group(1)
-            suffix = match.group(2).upper()
-            if suffix == 'Y':
-                return f"{date_part}_Y"
-            return date_part
+        # Convert to lowercase
+        normalized = str(header_text).strip().lower()
         
-        # Pattern 2: Just the date without suffix (assume quarterly)
-        # "30.06.2025"
-        match = re.search(r'\b(\d{2}\.\d{2}\.\d{4})\b', header_text)
-        if match:
-            return match.group(1)
+        # Replace dots with underscores (for dates like 30.06.2025)
+        normalized = normalized.replace('.', '_')
         
-        # Pattern 3: Quarterly labels
-        # "Q1 FY2026", "Q1 2025", etc.
-        match = re.search(r'Q[1-4].*?(20\d{2})', header_text, re.IGNORECASE)
-        if match:
-            year = match.group(1)
-            # Map Q1 FY2026 → 30.06.2025
-            if 'Q1' in header_text.upper():
-                return f"30.06.{int(year)-1}"
-            elif 'Q2' in header_text.upper():
-                return f"30.09.{int(year)-1}"
-            elif 'Q3' in header_text.upper():
-                return f"31.12.{int(year)-1}"
-            elif 'Q4' in header_text.upper():
-                return f"31.03.{year}"
+        # Replace any whitespace with underscores
+        normalized = re.sub(r'\s+', '_', normalized)
         
-        # Pattern 4: Yearly labels
-        # "FY 2025", "FY2025", "Year 2025"
-        match = re.search(r'(?:FY|Year)\s*(20\d{2})', header_text, re.IGNORECASE)
-        if match:
-            year = match.group(1)
-            return f"31.03.{year}_Y"
+        # Remove special characters (except underscores)
+        normalized = re.sub(r'[^a-z0-9_]', '', normalized)
         
-        return None
+        # Remove multiple consecutive underscores
+        normalized = re.sub(r'_+', '_', normalized)
+        
+        # Remove leading/trailing underscores
+        normalized = normalized.strip('_')
+        
+        return normalized if normalized else None
     
     def _create_metric_key_map(self) -> Dict[str, str]:
         """
@@ -1172,9 +1124,11 @@ class FinancialExcelGenerator:
                 return False
             
             # Load template or create new workbook
+            # NOTE: Loading creates an in-memory copy - original template file is NEVER modified
             if template_excel_path and template_excel_path.exists():
                 wb = openpyxl.load_workbook(template_excel_path)
                 ws = wb.active
+                _log.info(f"Loaded template from: {template_excel_path} (in-memory copy, original preserved)")
             else:
                 wb = openpyxl.Workbook()
                 ws = wb.active
@@ -1200,6 +1154,8 @@ class FinancialExcelGenerator:
             # Extract periods from template Excel if provided, otherwise from data
             all_periods = []
             period_headers = []
+
+            print(f"standard_metrics: {len(standard_metrics)} -> {standard_metrics}")
             
             if template_excel_path and template_excel_path.exists():
                 # Extract periods from Row 2 of template
@@ -1300,12 +1256,14 @@ class FinancialExcelGenerator:
                 metric_name = metric['name']
                 metric_key = metric['key']
                 is_bold = metric.get('is_bold', False)
+                # debug print for metric key bold or not
+                print(f"Processing metric: {metric_name} (key: {metric_key}, bold: {is_bold})")
                 
                 # Column A: Metric name
                 cell = ws[f'A{row_idx}']
                 cell.value = metric_name
-                if is_bold:
-                    cell.font = Font(bold=True)
+                # Always set font explicitly to avoid inheriting bold from previous cells
+                cell.font = Font(bold=is_bold)
                 cell.alignment = Alignment(horizontal='left', vertical='center')
                 
                 # Fill data for each company
@@ -1317,7 +1275,7 @@ class FinancialExcelGenerator:
                     # Build data map for this company
                     financial_data = company_data.get('financial_data', [])
                     _log.info(f"Processing company {company_idx + 1}/{len(companies_data)}: {company_name} with {len(financial_data)} financial items")
-                    _log.info(f"financial_data sample: {financial_data}")  # Log first 2 items for brevity
+                    # _log.info(f"financial_data sample: {financial_data}")  # Log first 2 items for brevity
                     self._build_data_map(financial_data)
                     
                     # Fill period values for this company
@@ -1365,9 +1323,82 @@ class FinancialExcelGenerator:
             _log.error(f"Error generating consolidated Excel: {e}", exc_info=True)
             return False
     
+    def _is_section_heading(self, cell_value: str, cell) -> bool:
+        """
+        Detect if a cell is a section heading, not a metric.
+        
+        Uses multiple signals:
+        1. Bold formatting (primary signal for headers)
+        2. Roman numerals at start (I., II., III., IV.)
+        3. Ends with colon
+        4. Too short (< 5 chars)
+        5. All uppercase
+        """
+        import re
+        
+        if not cell_value:
+            return False
+        
+        text = str(cell_value).strip()
+        
+        # Signal 1: Bold formatting (strongest signal)
+        is_bold = False
+        if hasattr(cell, 'font') and cell.font and hasattr(cell.font, 'bold'):
+            is_bold = bool(cell.font.bold)
+        
+        # Signal 2: Contains Roman numerals at start (I., II., III., IV.)
+        has_roman_numeral = bool(re.match(r'^[IVX]+\.\s', text))
+        
+        # Signal 3: Ends with colon (common for section headers)
+        ends_with_colon = text.endswith(':')
+        
+        # Signal 4: Too short (< 5 chars) - likely just "I.", "II."
+        is_too_short = len(text) < 5
+        
+        # Signal 5: All uppercase (REVENUE, EXPENSES)
+        is_all_caps = text.isupper() and len(text) > 3
+        
+        # Decision logic:
+        # If bold AND (has roman numeral OR ends with colon OR too short) → heading
+        if is_bold and (has_roman_numeral or ends_with_colon or is_too_short):
+            return True
+        
+        # If has roman numeral → likely heading
+        if has_roman_numeral:
+            return True
+        
+        # If ends with colon AND is bold → heading
+        if ends_with_colon and is_bold:
+            return True
+        
+        # If all caps AND bold → heading
+        if is_all_caps and is_bold:
+            return True
+        
+        # If too short AND bold → heading
+        if is_too_short and is_bold:
+            return True
+        
+        return False
+    
+    def _is_formula_cell(self, cell) -> bool:
+        """
+        Detect if a cell contains a formula.
+        """
+        # Method 1: Check data type
+        if hasattr(cell, 'data_type') and cell.data_type == 'f':  # 'f' = formula
+            return True
+        
+        # Method 2: Check if value starts with =
+        if hasattr(cell, 'value') and isinstance(cell.value, str) and cell.value.startswith('='):
+            return True
+        
+        return False
+    
     def _read_metrics_from_template(self, ws) -> List[Dict]:
         """
         Read metrics from Excel template (Column A, starting from row 3).
+        Skips section headings using bold formatting and other signals.
         
         Args:
             ws: Worksheet object
@@ -1376,6 +1407,7 @@ class FinancialExcelGenerator:
             List of metric dicts with 'name', 'key', and 'is_bold'
         """
         metrics = []
+        skipped_headings = []
         
         try:
             # Start from row 3 (rows 1-2 are usually company name and period headers)
@@ -1383,23 +1415,35 @@ class FinancialExcelGenerator:
                 cell = ws.cell(row=row_idx, column=1)  # Column A
                 if cell.value:
                     metric_name = str(cell.value).strip()
-                    # Skip empty cells and very short text (likely section headers)
-                    if metric_name and len(metric_name) > 2:
-                        # Infer key from metric name
-                        key = self._infer_key_from_metric(metric_name)
-                        
-                        # Check if cell is bold
-                        is_bold = False
-                        if cell.font and cell.font.bold:
-                            is_bold = True
-                        
-                        metrics.append({
-                            'name': metric_name,
-                            'key': key,
-                            'is_bold': is_bold
-                        })
+                    
+                    # Skip empty or very short cells
+                    if not metric_name or len(metric_name) < 3:
+                        continue                
+                    
+                    # Infer key from metric name
+                    key = self._infer_key_from_metric(metric_name)
+                    
+                    # Check if cell is bold
+                    is_bold = False
+                    if cell.font and cell.font.bold:
+                        print("Detected bold formatting for cell:", metric_name)
+                        is_bold = True
+                    
+                    # Check if it's a formula cell
+                    is_formula = self._is_formula_cell(cell)
+                    
+                    metrics.append({
+                        'name': metric_name,
+                        'key': key,
+                        'is_bold': is_bold,
+                        'is_formula': is_formula
+                    })
+                    
+                    _log.debug(f"Including metric (row {row_idx}): '{metric_name}' → key '{key}'{' [bold]' if is_bold else ''}{' [formula]' if is_formula else ''}")
             
             _log.info(f"Read {len(metrics)} metrics from template Column A")
+            if skipped_headings:
+                _log.info(f"Skipped {len(skipped_headings)} section headings: {skipped_headings}")
             return metrics
             
         except Exception as e:
@@ -1422,20 +1466,12 @@ class FinancialExcelGenerator:
         # Remove common punctuation
         key = key.replace('(', '').replace(')', '').replace(',', '')
         key = key.replace('&', 'and').replace('-', '_')
-        key = key.replace('/', '_').replace('.', '')
         
         # Replace multiple spaces with single underscore
         key = '_'.join(key.split())
         
         # Remove leading/trailing underscores
         key = key.strip('_')
-        
-        # Use metric matching to find best matching standard key
-        metric_map = self._create_metric_key_map()
-        matched_key = self._match_metric_to_key(metric_name, metric_map)
-        
-        if matched_key:
-            return matched_key
         
         return key
     

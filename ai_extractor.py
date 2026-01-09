@@ -32,10 +32,10 @@ class AIFinancialExtractor:
       "particular": "Sale of goods",
       "key": "sale_of_goods",
       "values": {{
-        "30.06.2025": "4,357.64",
-        "30.06.2024": "3,892.15",
-        "31.03.2025": "15,678.90",
-        "31.03.2025_Y": "16,859.22"
+        "30_06_2025_q": "4,357.64",
+        "30_06_2024_q": "3,892.15",
+        "31_03_2025_q": "15,678.90",
+        "31_03_2025_y": "16,859.22"
       }}
     }}
   ]
@@ -66,25 +66,26 @@ Other:
 • paid_up_equity_share_capital, other_equity, eps_basic, eps_diluted
 
 **PERIOD KEY FORMAT - CRITICAL:**
-Period keys in "values" object MUST be in DD.MM.YYYY format. DO NOT use table header text!
+Convert period headers to normalized keys (lowercase, underscores, no special chars).
 
-✗ WRONG (table header text):
+Examples of normalization:
+- "30.06.2025 Q" → "30_06_2025_q"
+- "Quarter Ended June 30, 2025" → "quarter_ended_june_30_2025"
+- "Year Ended March 31, 2025" → "year_ended_march_31_2025"
+- "3M 30th June 2025" → "3m_30th_june_2025"
+- "FY 2025" → "fy_2025"
+
+✗ WRONG (using original header):
   "Quarter Ended (Unaudited)": "1,42,064"
-  "Quarter Ended March 31,2025 (Audited)": "1,45,202"
-  "Year Ended March 31,2025 (Audited)": "5,99,920"
 
-✓ CORRECT (extracted dates):
-  "30.06.2025": "1,42,064"      ← Quarterly (Q1 FY2026)
-  "31.03.2025": "1,45,202"      ← Quarterly (Q4 FY2025)
-  "30.06.2024": "1,48,576"      ← Quarterly (Q1 FY2025)
-  "31.03.2025_Y": "5,99,920"    ← Yearly (FY2025) - note "_Y" suffix
+✓ CORRECT (normalized key):
+  "quarter_ended_unaudited": "1,42,064"
 
-**HOW TO EXTRACT DATES:**
-- "Quarter Ended June 30, 2025" → "30.06.2025"
-- "Quarter Ended March 31, 2025" → "31.03.2025"
-- "Year Ended March 31, 2025" → "31.03.2025_Y" (add "_Y" for yearly)
-- "Q1 FY2026" → "30.06.2025" (Q1 = Jun 30)
-- "FY 2025" → "31.03.2025_Y" (fiscal year ends Mar 31)
+**HOW TO NORMALIZE:**
+1. Convert to lowercase
+2. Replace spaces/dots with underscores
+3. Remove special characters
+4. Remove extra underscores
 
 **OTHER EXTRACTION RULES:**
 1. Numbers: Keep commas - "4,357.64" not "4357.64"
@@ -119,10 +120,10 @@ REQUIRED METRICS:
       "particular": "Sale of goods",
       "key": "sale_of_goods",
       "values": {{
-        "30.06.2025": "4,357.64",
-        "30.06.2024": "3,892.15",
-        "31.03.2025": "15,678.90",
-        "31.03.2025_Y": "16,859.22"
+        "30_06_2025_q": "4,357.64",
+        "30_06_2024_q": "3,892.15",
+        "31_03_2025_q": "15,678.90",
+        "31_03_2025_y": "16,859.22"
       }}
     }}
   ]
@@ -143,21 +144,28 @@ REQUIRED METRICS:
   5. Semantic similarity (>75%)
 
 **PERIOD KEY FORMAT - CRITICAL:**
-Period keys in "values" object MUST be in DD.MM.YYYY format. DO NOT use table header text!
+You will receive REQUIRED_PERIODS mapping that shows:
+- formatted_key: The key to use in JSON output
+- original_header: The text to look for in the table
 
-✗ WRONG (table header text):
-  {{"Quarter Ended (Unaudited)": "1,42,064"}}
-  {{"Quarter Ended March 31,2025 (Audited)": "1,45,202"}}
+Example mapping:
+{{
+  "30_06_2025_q": "30.06.2025 Q",
+  "quarter_ended_june_30_2025": "Quarter Ended June 30, 2025",
+  "3m_30th_june_2025": "3M 30th June 2025"
+}}
 
-✓ CORRECT (extracted dates):
-  {{"30.06.2025": "1,42,064", "31.03.2025": "1,45,202", "31.03.2025_Y": "5,99,920"}}
+✗ WRONG (using original header as key):
+  {{"Quarter Ended June 30, 2025": "1,42,064"}}
 
-**HOW TO EXTRACT DATES FROM HEADERS:**
-- "Quarter Ended June 30, 2025 (Unaudited)" → "30.06.2025"
-- "Quarter Ended March 31, 2025 (Audited)" → "31.03.2025" 
-- "Year Ended March 31, 2025" → "31.03.2025_Y" (add "_Y" for yearly!)
-- "Q1 FY2026" → "30.06.2025"
-- "FY 2025" → "31.03.2025_Y"
+✓ CORRECT (using formatted_key from mapping):
+  {{"quarter_ended_june_30_2025": "1,42,064"}}
+
+**HOW TO EXTRACT:**
+1. Look at REQUIRED_PERIODS mapping
+2. Find the original_header text in the table column
+3. Extract the value from that column
+4. Use the formatted_key (not original_header) in JSON output
 
 **OTHER EXTRACTION RULES:**
 1. Numbers: Keep commas - "4,357.64" not "4357.64"
@@ -176,15 +184,22 @@ Return ONLY the JSON object. No additional text."""
 
     USER_PROMPT_WITH_TEMPLATE = """Extract financial data from this {format} table for {company_name}.
 
-**IMPORTANT:** 
-1. First identify ALL date columns in the table header (typically 3-4+ periods)
-2. Extract values for EVERY metric (from system prompt) across ALL periods
-3. Do NOT skip any date columns - extract complete data
+**REQUIRED_PERIODS (use formatted_key in JSON output):**
+{period_mapping}
+
+**INSTRUCTIONS:**
+1. For each metric (from REQUIRED METRICS in system prompt)
+2. Find the metric row in the table
+3. For each period in REQUIRED_PERIODS:
+   - Find the column with the original_header text
+   - Extract the value from that cell
+   - Use the formatted_key (not original_header) in your JSON output
+4. Return complete data for ALL metrics and ALL periods
 
 TABLE CONTENT:
 {content}
 
-Return ONLY the JSON object with ALL periods. No explanations."""
+Return ONLY the JSON object. Use formatted_key for all period keys in "values" object. No explanations."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
         """
@@ -223,9 +238,159 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             response = response[:-3]
         return response.strip()
     
+    def _is_section_heading(self, cell_value: str, cell) -> bool:
+        """
+        Detect if a cell is a section heading, not a metric.
+        
+        Uses multiple signals:
+        1. Bold formatting (primary signal for headers)
+        2. Roman numerals at start (I., II., III., IV.)
+        3. Ends with colon
+        4. Too short (< 5 chars)
+        5. All uppercase
+        """
+        import re
+        
+        if not cell_value:
+            return False
+        
+        text = str(cell_value).strip()
+        
+        # Signal 1: Bold formatting (strongest signal)
+        is_bold = False
+        if hasattr(cell, 'font') and cell.font and hasattr(cell.font, 'bold'):
+            is_bold = bool(cell.font.bold)
+        
+        # Signal 2: Contains Roman numerals at start (I., II., III., IV.)
+        has_roman_numeral = bool(re.match(r'^[IVX]+\.', text))
+        
+        # Signal 3: Ends with colon (common for section headers)
+        ends_with_colon = text.endswith(':')
+        
+        # Signal 4: Too short (< 5 chars) - likely just "I.", "II."
+        is_too_short = len(text) < 5
+        
+        # Signal 5: All uppercase (REVENUE, EXPENSES)
+        is_all_caps = text.isupper() and len(text) > 3
+        
+        # Decision logic:
+        # If bold AND (has roman numeral OR ends with colon OR too short) → heading
+        if is_bold and (has_roman_numeral or ends_with_colon or is_too_short):
+            return True
+        
+        # If has roman numeral → likely heading
+        if has_roman_numeral:
+            return True
+        
+        # If ends with colon AND is bold → heading
+        if ends_with_colon and is_bold:
+            return True
+        
+        # If all caps AND bold → heading
+        if is_all_caps and is_bold:
+            return True
+        
+        # If too short AND bold → heading
+        if is_too_short and is_bold:
+            return True
+        
+        return False
+    
+    def _is_formula_cell(self, cell) -> bool:
+        """
+        Detect if a cell contains a formula.
+        """
+        # Method 1: Check data type
+        if hasattr(cell, 'data_type') and cell.data_type == 'f':  # 'f' = formula
+            return True
+        
+        # Method 2: Check if value starts with =
+        if hasattr(cell, 'value') and isinstance(cell.value, str) and cell.value.startswith('='):
+            return True
+        
+        return False
+    
+    def _read_template_periods(self, ws) -> List[str]:
+        """
+        Read period headers from template Row 2 (columns B onwards).
+        
+        Args:
+            ws: Worksheet object
+        
+        Returns:
+            List of period keys like ["30.06.2025", "31.03.2025_Y", "30.06.2024"]
+        """
+        import re
+        
+        periods = []
+        
+        try:
+            # Read Row 2, starting from column B (index 2)
+            for col_idx in range(2, ws.max_column + 1):
+                cell = ws.cell(row=2, column=col_idx)
+                if cell.value:
+                    header_text = str(cell.value).strip()
+                    print(f"header text: {header_text}") # Debug print
+                    if header_text:
+                        # Parse period from header
+                        period_key = self._parse_period_from_header(header_text)
+                        if period_key and period_key not in periods:
+                            periods.append(period_key)
+            
+            _log.info(f"Read {len(periods)} periods from template Row 2: {periods}")
+            return periods
+            
+        except Exception as e:
+            _log.warning(f"Failed to read periods from template: {str(e)}")
+            return []
+    
+    def _parse_period_from_header(self, header_text: str) -> str:
+        """
+        Convert any period header text to normalized key format.
+        
+        Examples:
+        - "30.06.2025 Q" → "30_06_2025_q"
+        - "31.03.2025 Y" → "31_03_2025_y"
+        - "Quarter Ended June 30, 2025" → "quarter_ended_june_30_2025"
+        - "Year Ended March 31, 2025" → "year_ended_march_31_2025"
+        - "3M 30th June 2025" → "3m_30th_june_2025"
+        - "12M FY 2025" → "12m_fy_2025"
+        
+        Args:
+            header_text: Original period header from template
+        
+        Returns:
+            Normalized key (lowercase, underscores, no special chars)
+        """
+        import re
+        
+        if not header_text:
+            return None
+        
+        # Convert to lowercase
+        normalized = str(header_text).strip().lower()
+        
+        # Replace dots with underscores (for dates like 30.06.2025)
+        normalized = normalized.replace('.', '_')
+        
+        # Replace any whitespace with underscores
+        normalized = re.sub(r'\s+', '_', normalized)
+        
+        # Remove special characters (except underscores)
+        normalized = re.sub(r'[^a-z0-9_]', '', normalized)
+        
+        # Remove multiple consecutive underscores
+        normalized = re.sub(r'_+', '_', normalized)
+        
+        # Remove leading/trailing underscores
+        normalized = normalized.strip('_')
+        
+        return normalized if normalized else None
+    
     def _read_template_metrics(self, template_excel_path: Path) -> List[str]:
         """
         Read metric names from Excel template (Column A, starting from row 3).
+        Skips section headings using multiple detection signals.
         
         Args:
             template_excel_path: Path to Excel template file
@@ -240,23 +405,89 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             ws = wb.active
             
             metrics = []
+            skipped_headings = []
+            
             # Start from row 3 (rows 1-2 are usually headers)
             for row_idx in range(3, ws.max_row + 1):
                 cell = ws.cell(row=row_idx, column=1)  # Column A
                 if cell.value:
                     metric_name = str(cell.value).strip()
-                    # Skip empty cells and section headers (usually uppercase or short)
-                    if metric_name and len(metric_name) > 3:
-                        # Try to infer key from metric name
-                        key = self._infer_key_from_metric(metric_name)
-                        metrics.append(f"{metric_name} (key: {key})")
+                    
+                    # Skip empty or very short cells
+                    if not metric_name or len(metric_name) < 3:
+                        continue
+                    
+                    # Check if it's a section heading
+                    if self._is_section_heading(metric_name, cell):
+                        skipped_headings.append(metric_name)
+                        _log.debug(f"Skipping section heading (row {row_idx}): '{metric_name}'")
+                        continue
+                    
+                    # Check if it's a formula cell
+                    is_formula = self._is_formula_cell(cell)
+                    
+                    # Infer key from metric name
+                    key = self._infer_key_from_metric(metric_name)
+                    
+                    # Include metrics (including formulas - they exist in PDF as calculated values)
+                    metric_str = f"{metric_name} (key: {key})"
+                    if is_formula:
+                        metric_str += " [formula]"
+                    
+                    metrics.append(metric_str)
+                    _log.debug(f"Including metric (row {row_idx}): '{metric_name}' → key '{key}'{' [formula]' if is_formula else ''}")
             
             _log.info(f"Read {len(metrics)} metrics from template: {template_excel_path.name}")
+            if skipped_headings:
+                _log.info(f"Skipped {len(skipped_headings)} section headings: {skipped_headings}")
             return metrics
             
         except Exception as e:
             _log.warning(f"Failed to read template metrics: {str(e)}")
             return []
+    
+    def _read_template_structure(self, template_excel_path: Path) -> Dict:
+        """
+        Read complete template structure: periods AND metrics.
+        
+        Args:
+            template_excel_path: Path to Excel template file
+        
+        Returns:
+            Dict with 'periods' and 'metrics' lists
+        """
+        try:
+            from openpyxl import load_workbook
+            
+            wb = load_workbook(template_excel_path, data_only=True)
+            ws = wb.active
+            
+            # Read periods from Row 2
+            periods = self._read_template_periods(ws)
+            
+            # Read metrics from Column A (using updated method that skips headings)
+            # We need to read directly here instead of calling _read_template_metrics
+            # because that method returns formatted strings
+            metrics = []
+            for row_idx in range(3, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=1)
+                if cell.value:
+                    metric_name = str(cell.value).strip()
+                    if not metric_name or len(metric_name) < 3:
+                        continue
+                    if self._is_section_heading(metric_name, cell):
+                        continue
+                    key = self._infer_key_from_metric(metric_name)
+                    metrics.append(f"{metric_name} (key: {key})")
+            
+            return {
+                'periods': periods,
+                'metrics': metrics
+            }
+            
+        except Exception as e:
+            _log.warning(f"Failed to read template structure: {str(e)}")
+            return {'periods': [], 'metrics': []}
     
     def _infer_key_from_metric(self, metric_name: str) -> str:
         """
@@ -374,25 +605,32 @@ Return ONLY the JSON object with ALL periods. No explanations."""
                 content = content[:max_content_length]
             
             # Check if template is provided
-            template_metrics = []
+            template_structure = {'periods': [], 'metrics': []}
+            print(f"is template path exists: {template_excel_path and template_excel_path.exists()}") # Debug print
             if template_excel_path and template_excel_path.exists():
-                template_metrics = self._read_template_metrics(template_excel_path)
+                template_structure = self._read_template_structure(template_excel_path)
             
             # Choose appropriate prompts based on template availability
-            if template_metrics:
-                _log.info(f"Using TEMPLATE-GUIDED extraction with {len(template_metrics)} metrics")
-                metrics_text = "\n".join([f"- {m}" for m in template_metrics])
-                print(f"Using template with {len(template_metrics)} metrics")
+            if template_structure['metrics']:
+                periods_text = ", ".join(template_structure['periods']) if template_structure['periods'] else "ALL periods from table"
+                _log.info(f"Using TEMPLATE-GUIDED extraction with {len(template_structure['metrics'])} metrics and {len(template_structure['periods'])} periods")
                 
-                # Use template-aware system prompt with metrics embedded
+                metrics_text = "\n".join([f"- {m}" for m in template_structure['metrics']])
+                
+                print(f"Using template with {metrics_text} metrics, {periods_text} periods")
+                
+                # Use template-aware system prompt with metrics
                 system_prompt = self.SYSTEM_PROMPT_WITH_TEMPLATE.format(
                     template_metrics=metrics_text
                 )
+
                 user_prompt = self.USER_PROMPT_WITH_TEMPLATE.format(
                     format=format_type,
                     company_name=company_name,
+                    period_mapping=periods_text,
                     content=content
                 )
+            
             else:
                 _log.info("Using STANDARD extraction (no template)")
                 system_prompt = self.SYSTEM_PROMPT
@@ -422,6 +660,7 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             
             # Parse and validate JSON
             data = json.loads(json_str)
+            # data =  {'company_name': 'BRITANNIA', 'financial_data': [{'particular': 'Sale of goods', 'key': 'sale_of_goods_/_income_from_operation', 'values': {'3m_30th_june_2025': '4,357.64', '3m_31st_mar_2025': '4,218.90', '3m_30th_june_2024': '3,967.38', '12_m_fy_2025': '16,859.22'}}, {'particular': 'Other operating revenues', 'key': 'other_operating_revenues', 'values': {'3m_30th_june_2025': '95.10', '3m_31st_mar_2025': '63.61', '3m_30th_june_2024': '127.06', '12_m_fy_2025': '436.70'}}, {'particular': 'Total Revenue', 'key': 'total_revenue', 'values': {'3m_30th_june_2025': '4,452.74', '3m_31st_mar_2025': '4,282.51', '3m_30th_june_2024': '4,094.44', '12_m_fy_2025': '17,295.92'}}, {'particular': 'Other Income', 'key': 'other_income', 'values': {'3m_30th_june_2025': '54.11', '3m_31st_mar_2025': '71.58', '3m_30th_june_2024': '67.29', '12_m_fy_2025': '250.68'}}, {'particular': 'Total Income', 'key': 'total_income', 'values': {'3m_30th_june_2025': '4,506.85', '3m_31st_mar_2025': '4,354.09', '3m_30th_june_2024': '4,161.73', '12_m_fy_2025': '17,546.60'}}, {'particular': 'Cost of materials consumed', 'key': 'cost_of_materials_consumed', 'values': {'3m_30th_june_2025': '2,250.47', '3m_31st_mar_2025': '2,126.03', '3m_30th_june_2024': '1,922.74', '12_m_fy_2025': '8,608.64'}}, {'particular': 'Purchases of stock-in-trade', 'key': 'purchases_of_stock_in_trade', 'values': {'3m_30th_june_2025': '506.38', '3m_31st_mar_2025': '507.33', '3m_30th_june_2024': '462.63', '12_m_fy_2025': '1,993.16'}}, {'particular': 'Changes in inventories of finished goods, work-in-progress and stock-in-trade', 'key': 'changes_in_inventories_of_finished_goods_work_in_porgress_and_stockin_trade', 'values': {'3m_30th_june_2025': '(20.14)', '3m_31st_mar_2025': '11.50', '3m_30th_june_2024': '1.67', '12_m_fy_2025': '(67.96)'}}, {'particular': 'Employee benefits expense', 'key': 'employee_benefits_expense', 'values': {'3m_30th_june_2025': '203.72', '3m_31st_mar_2025': '127.51', '3m_30th_june_2024': '164.71', '12_m_fy_2025': '554.70'}}, {'particular': 'Finance costs', 'key': 'finance_costs', 'values': {'3m_30th_june_2025': '25.68', '3m_31st_mar_2025': '30.10', '3m_30th_june_2024': '28.58', '12_m_fy_2025': '137.10'}}, {'particular': 'Depreciation and amortisation expense', 'key': 'depreciation_and_amortisation_expense', 'values': {'3m_30th_june_2025': '74.88', '3m_31st_mar_2025': '73.83', '3m_30th_june_2024': '66.71', '12_m_fy_2025': '284.67'}}, {'particular': 'Total expenses', 'key': 'total_expenses', 'values': {'3m_30th_june_2025': '3,832.65', '3m_31st_mar_2025': '3,607.74', '3m_30th_june_2024': '3,461.44', '12_m_fy_2025': '14,654.04'}}, {'particular': 'Profit before tax', 'key': 'profit_before_tax', 'values': {'3m_30th_june_2025': '674.20', '3m_31st_mar_2025': '746.35', '3m_30th_june_2024': '675.65', '12_m_fy_2025': '2,867.77'}}, {'particular': 'Current tax', 'key': 'current_tax', 'values': {'3m_30th_june_2025': '180.38', '3m_31st_mar_2025': '181.08', '3m_30th_june_2024': '176.86', '12_m_fy_2025': '730.63'}}, {'particular': 'Total tax', 'key': 'total_tax', 'values': {'3m_30th_june_2025': '175.93', '3m_31st_mar_2025': '189.25', '3m_30th_june_2024': '173.57', '12_m_fy_2025': '737.05'}}, {'particular': 'Profit for the year', 'key': 'profit_for_the_year', 'values': {'3m_30th_june_2025': '498.27', '3m_31st_mar_2025': '557.10', '3m_30th_june_2024': '502.08', '12_m_fy_2025': '2,130.72'}}, {'particular': 'EBITDA', 'key': 'ebitda', 'values': {'3m_30th_june_2025': '', '3m_31st_mar_2025': '746.35', '3m_30th_june_2024': '', '12_m_fy_2025': '2,892.56'}}, {'particular': 'EBITDA Margin', 'key': 'ebitda_margin', 'values': {'3m_30th_june_2025': '', '3m_31st_mar_2025': '', '3m_30th_june_2024': '', '12_m_fy_2025': ''}}]}
             
             # Validate structure
             if 'financial_data' not in data:
@@ -431,10 +670,12 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             data['metadata'] = {
                 'extraction_method': 'openai',
                 'model': self.model,
-                'tokens_used': response.usage.total_tokens,
+                'tokens_used': 'N/A',
                 'source_format': format_type.lower(),
-                'template_guided': bool(template_metrics),
-                'template_metrics_count': len(template_metrics)
+                'template_guided': bool(template_structure['metrics']),
+                'template_metrics_count': len(template_structure['metrics']),
+                'template_periods_count': len(template_structure.get('period_mapping', {})),
+                'template_periods': list(template_structure.get('period_mapping', {}).keys()) if template_structure.get('period_mapping') else None
             }
             
             _log.info(f"Successfully extracted {len(data['financial_data'])} financial items")
@@ -442,7 +683,7 @@ Return ONLY the JSON object with ALL periods. No explanations."""
             
         except json.JSONDecodeError as e:
             _log.error(f"Failed to parse JSON response: {str(e)}")
-            _log.error(f"Raw response: {json_str[:500]}...")
+            # _log.error(f"Raw response: {json_str[:500]}...")
             raise ValueError(f"Invalid JSON response from OpenAI: {str(e)}")
         except Exception as e:
             _log.error(f"Error during OpenAI extraction: {str(e)}", exc_info=True)
