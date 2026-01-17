@@ -5,7 +5,7 @@ Converts JSON financial data to formatted Excel and CSV files
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
@@ -96,7 +96,7 @@ class FinancialExcelGenerator:
         """Build data map from financial_data array for easy lookup."""
         self.data_map = {}  # Clear previous data
         
-        _log.info(f"Building data map from {len(financial_data)} items")
+        # _log.info(f"Building data map from {len(financial_data)} items")
         
         for item in financial_data:
             key = self._normalize_key(item.get('key', ''))
@@ -109,7 +109,7 @@ class FinancialExcelGenerator:
             else:
                 _log.warning(f"Item missing key: {item.get('particular', 'Unknown')}")
         
-        _log.info(f"Data map built with {len(self.data_map)} keys: {list(self.data_map.keys())}")
+        # _log.info(f"Data map built with {len(self.data_map)} keys: {list(self.data_map.keys())}")
     
     def _get_value(self, key: str, period: str) -> float:
         """Get numeric value for a key and period using exact match."""
@@ -1155,7 +1155,7 @@ class FinancialExcelGenerator:
             all_periods = []
             period_headers = []
 
-            print(f"standard_metrics: {len(standard_metrics)} -> {standard_metrics}")
+            # print(f"standard_metrics: {len(standard_metrics)} -> {standard_metrics}")
             
             if template_excel_path and template_excel_path.exists():
                 # Extract periods from Row 2 of template
@@ -1192,9 +1192,9 @@ class FinancialExcelGenerator:
                                     all_periods.append(period_key)
                                     period_headers.append(period_key)
             
-            _log.info(f"Using periods from data: {all_periods}")
+            # _log.info(f"Using periods from data: {all_periods}")
             periods_to_show = all_periods
-            _log.info(f"Using periods for consolidation: {periods_to_show}")
+            # _log.info(f"Using periods for consolidation: {periods_to_show}")
             
             # Calculate column layout
             # Each company gets 4 columns + 1 blank separator
@@ -1256,8 +1256,9 @@ class FinancialExcelGenerator:
                 metric_name = metric['name']
                 metric_key = metric['key']
                 is_bold = metric.get('is_bold', False)
+                is_empty = metric.get('is_empty', False)
                 # debug print for metric key bold or not
-                print(f"Processing metric: {metric_name} (key: {metric_key}, bold: {is_bold})")
+                # print(f"Processing metric: {metric_name} (key: {metric_key}, bold: {is_bold}), is_empty: {is_empty}")
                 
                 # Column A: Metric name
                 cell = ws[f'A{row_idx}']
@@ -1268,13 +1269,17 @@ class FinancialExcelGenerator:
                 
                 # Fill data for each company
                 current_col = 2
+
+                if is_empty or is_bold:
+                    row_idx += 1
+                    continue
                 
                 for company_idx, company_data in enumerate(companies_data):
                     company_name = company_data.get('company_name', f'Company {company_idx + 1}')
                     
                     # Build data map for this company
                     financial_data = company_data.get('financial_data', [])
-                    _log.info(f"Processing company {company_idx + 1}/{len(companies_data)}: {company_name} with {len(financial_data)} financial items")
+                    # _log.info(f"Processing company {company_idx + 1}/{len(companies_data)}: {company_name} with {len(financial_data)} financial items")
                     # _log.info(f"financial_data sample: {financial_data}")  # Log first 2 items for brevity
                     self._build_data_map(financial_data)
                     
@@ -1284,9 +1289,9 @@ class FinancialExcelGenerator:
                         cell = ws[f'{col_letter}{row_idx}']
                         
                         # Get value from data map
-                        _log.info(f"Fetching value for {company_name}, Metric: {metric_key}, Period: {period}")
+                        # _log.info(f"Fetching value for {company_name}, Metric: {metric_key}, Period: {period}")
                         value = self._get_value(metric_key, period)
-                        _log.info(f"Result for {company_name}, {metric_key}, {period}: {value}")
+                        # _log.info(f"Result for {company_name}, {metric_key}, {period}: {value}")
                         
                         if value and value != 0:
                             # Handle numeric values
@@ -1415,10 +1420,11 @@ class FinancialExcelGenerator:
                 cell = ws.cell(row=row_idx, column=1)  # Column A
                 if cell.value:
                     metric_name = str(cell.value).strip()
-                    
-                    # Skip empty or very short cells
-                    if not metric_name or len(metric_name) < 3:
-                        continue                
+
+                    # handle empty cells
+                    is_empty = False
+                    if not metric_name:
+                        is_empty = True
                     
                     # Infer key from metric name
                     key = self._infer_key_from_metric(metric_name)
@@ -1436,10 +1442,19 @@ class FinancialExcelGenerator:
                         'name': metric_name,
                         'key': key,
                         'is_bold': is_bold,
-                        'is_formula': is_formula
+                        'is_formula': is_formula,
+                        'is_empty': is_empty
                     })
                     
                     _log.debug(f"Including metric (row {row_idx}): '{metric_name}' → key '{key}'{' [bold]' if is_bold else ''}{' [formula]' if is_formula else ''}")
+                else:
+                    metrics.append({
+                        'name': '',
+                        'key': '',
+                        'is_bold': False,
+                        'is_formula': False,
+                        'is_empty': True
+                    })
             
             _log.info(f"Read {len(metrics)} metrics from template Column A")
             if skipped_headings:
