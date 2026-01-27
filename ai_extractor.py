@@ -5,10 +5,10 @@ Extracts financial data from HTML/Markdown tables using GPT models
 import os
 import logging
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
-import openai
-from openai import OpenAI
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -201,21 +201,26 @@ TABLE CONTENT:
 
 Return ONLY the JSON object. Use formatted_key for all period keys in "values" object. No explanations."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: Optional[str] = None):
         """
         Initialize AI extractor.
         
         Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
-            model: OpenAI model to use (default: gpt-4o-mini for cost efficiency)
+            api_key: API provider token (defaults to API_PROVIDER_TOKEN env var)
+            model: AI model to use (default: gpt-4o-mini for cost efficiency)
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.api_key = api_key or os.getenv('API_AI_PROVIDER_TOKEN')
         if not self.api_key:
-            raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY environment variable.")
+            raise ValueError("API AI provider token not provided. Set API_AI_PROVIDER_TOKEN environment variable.")
         
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = model
-        _log.info(f"Initialized AIFinancialExtractor with model: {model}")
+        self.api_endpoint = os.getenv('API_AI_PROVIDER_ENDPOINT')
+        if not self.api_endpoint:
+            raise ValueError("API AI provider endpoint not provided. Set API_AI_PROVIDER_ENDPOINT environment variable.")
+
+        self.api_endpoint = self.api_endpoint.rstrip('/') + '/ai/generate'
+        self.provider = "openai"
+        self.model = "gpt-4o"
+        _log.info(f"Initialized AIFinancialExtractor with model: {self.model}")
     
     def _read_file_content(self, file_path: Path) -> str:
         """Read content from HTML or Markdown file."""
@@ -528,7 +533,7 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
             Dictionary with extracted financial data
         """
         content = self._read_file_content(html_path)
-        return self._extract_with_openai(content, company_name, "HTML", template_excel_path)
+        return self._extract_with_ai(content, company_name, "HTML", template_excel_path)
     
     def extract_from_markdown(self, md_path: Path, company_name: str,
                              template_excel_path: Path = None) -> Dict:
@@ -544,7 +549,7 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
             Dictionary with extracted financial data
         """
         content = self._read_file_content(md_path)
-        return self._extract_with_openai(content, company_name, "Markdown", template_excel_path)
+        return self._extract_with_ai(content, company_name, "Markdown", template_excel_path)
     
     def extract_from_output_dir(self, output_dir: Path, company_name: str, 
                                 preferred_format: str = "html", 
@@ -583,10 +588,10 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
         
         raise FileNotFoundError(f"No suitable table files found in {output_dir}")
     
-    def _extract_with_openai(self, content: str, company_name: str, format_type: str,
+    def _extract_with_ai(self, content: str, company_name: str, format_type: str,
                             template_excel_path: Path = None) -> Dict:
         """
-        Extract financial data using OpenAI API.
+        Extract financial data using AI.
         
         Args:
             content: HTML or Markdown content
@@ -640,23 +645,49 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
                     content=content
                 )
             
-            _log.info(f"Sending request to OpenAI ({self.model})...")
+            _log.info(f"Sending request to AI API ({self.model})...")
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Prepare request payload
+            payload = {
+                "provider": self.provider,
+                "model": self.model,
+                "prompts": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.1,  # Low temperature for consistent extraction
-                response_format={"type": "json_object"}  # Ensure JSON response
-            )
+                "options": {
+                    "temperature": 0.1,
+                    "response_format": {"type": "json_object"}
+                }
+            }
+            
+            # Make API request
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(self.api_endpoint, json=payload, headers=headers)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            
+            response_data = response.json()
+            
+            # Check for error in response
+            if "error" in response_data:
+                error_msg = response_data.get("error", "Unknown error")
+                _log.error(f"API returned error: {error_msg}")
+                raise ValueError(f"AI API error: {error_msg}")
             
             # Extract JSON from response
-            json_str = response.choices[0].message.content
+            json_str = response_data.get("response", "")
+            if not json_str:
+                raise ValueError("API response missing 'response' field")
+            
             json_str = self._clean_json_response(json_str)
             
-            _log.info(f"Received response from OpenAI (tokens used: {response.usage.total_tokens})")
+            usage = response_data.get("usage", {})
+            total_tokens = usage.get("total_tokens", "N/A")
+            _log.info(f"Received response from AI API (tokens used: {total_tokens})")
             
             # Parse and validate JSON
             data = json.loads(json_str)
@@ -670,7 +701,7 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
             data['metadata'] = {
                 'extraction_method': 'openai',
                 'model': self.model,
-                'tokens_used': 'N/A',
+                'tokens_used': total_tokens,
                 'source_format': format_type.lower(),
                 'template_guided': bool(template_structure['metrics']),
                 'template_metrics_count': len(template_structure['metrics']),
@@ -681,12 +712,17 @@ Return ONLY the JSON object. Use formatted_key for all period keys in "values" o
             _log.info(f"Successfully extracted {len(data['financial_data'])} financial items")
             return data
             
+        except requests.exceptions.RequestException as e:
+            _log.error(f"HTTP request failed: {str(e)}")
+            raise ValueError(f"Failed to connect to AI API: {str(e)}")
         except json.JSONDecodeError as e:
             _log.error(f"Failed to parse JSON response: {str(e)}")
-            # _log.error(f"Raw response: {json_str[:500]}...")
-            raise ValueError(f"Invalid JSON response from OpenAI: {str(e)}")
+            raise ValueError(f"Invalid JSON response from AI API: {str(e)}")
+        except ValueError as e:
+            # Re-raise ValueError (includes our custom API errors)
+            raise
         except Exception as e:
-            _log.error(f"Error during OpenAI extraction: {str(e)}", exc_info=True)
+            _log.error(f"Error during AI extraction: {str(e)}", exc_info=True)
             raise
 
 
